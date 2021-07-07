@@ -4,6 +4,7 @@ A script to generate the metadata for the experiments.
 from collections import defaultdict
 
 import numpy as np
+import pandas as pd
 from typing import List, Tuple, Dict
 
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
@@ -74,9 +75,42 @@ def split_tic_id_and_sector_list_equally(tic_id_and_sector_list: List[Tuple[int,
     return splits
 
 
+def splits_to_labeled_tuple_list(tic_id_and_sector_splits: List[List[Tuple[int, int]]], label: str
+                                 ) -> List[Tuple[int, int, str, int]]:
+    """
+    Convert the splits to a list of tuples with the split index and label being part of the tuple.
+
+    :param tic_id_and_sector_splits: The TIC ID and sector split lists.
+    :param label: The label to apply to all elements of all splits.
+    :return: A list of tuples of the form `(tic_id, sector, label, split)`
+    """
+    labeled_tuple_list: List[Tuple[int, int, str, int]] = []
+    for split_index, tic_id_and_sector_split in enumerate(tic_id_and_sector_splits):
+        for tic_id, sector in tic_id_and_sector_split:
+            labeled_tuple_list.append((tic_id, sector, label, split_index))
+    return labeled_tuple_list
+
+
+def add_splits_and_labels(tic_id_and_sector_list: List[Tuple[int, int]], number_of_splits: int, label: str
+                          ) -> List[Tuple[int, int, str, int]]:
+    """
+    Adds split information, with equally sized splits keeping duplicate TIC IDs in the same split, and adds labels.
+
+    :param tic_id_and_sector_list:
+    :param number_of_splits: The number of equally sized splits to produce.
+    :param label: The label to apply to all elements.
+    :return: The list of tuples with each element in the form `(tic_id, sector, label, split)`.
+    """
+    tic_id_and_sector_splits = split_tic_id_and_sector_list_equally(tic_id_and_sector_list,
+                                                                    number_of_splits=number_of_splits)
+    tuple_list = splits_to_labeled_tuple_list(tic_id_and_sector_splits, label=label)
+    return tuple_list
+
+
 def generate_transit_metadata() -> None:
-    tic_id_and_sector_list = download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list()
-    tic_id_and_sector_splits = split_tic_id_and_sector_list_equally(tic_id_and_sector_list, number_of_splits=10)
+    planet_tic_id_and_sector_list = \
+        download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list()
+    planet_meta_data_list = add_splits_and_labels(planet_tic_id_and_sector_list, number_of_splits=10, label='planet')
     pass
 
 
