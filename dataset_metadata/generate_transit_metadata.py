@@ -1,6 +1,11 @@
 """
 A script to generate the metadata for the experiments.
 """
+try:
+    from enum import StrEnum
+except ImportError:
+    from backports.strenum import StrEnum
+
 from collections import defaultdict
 
 import numpy as np
@@ -9,6 +14,24 @@ from typing import List, Tuple, Dict
 
 from ramjet.data_interface.tess_data_interface import TessDataInterface
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
+
+
+class TransitMetadataColumn(StrEnum):
+    """
+    The list of the meta data columns for the transit data set.
+    """
+    TIC_ID = 'tic_id'
+    SECTOR = 'sector'
+    LABEL = 'label'
+    SPLIT = 'split'
+
+
+class TransitLabel(StrEnum):
+    """
+    The list of possible labels for the transit data set.
+    """
+    PLANET = 'planet'
+    NON_PLANET = 'non_planet'
 
 
 def download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list() -> List[Tuple[int, int]]:
@@ -134,13 +157,20 @@ def download_tess_primary_mission_non_confirmed_nor_candidate_exofop_planet_list
 
 
 def generate_transit_metadata() -> None:
+    """
+    Generates the transit data set metadata.
+    """
     planet_tic_id_and_sector_list = \
         download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list()
-    planet_meta_data_list = add_splits_and_labels(planet_tic_id_and_sector_list, number_of_splits=10, label='planet')
+    planet_meta_data_list = add_splits_and_labels(planet_tic_id_and_sector_list, number_of_splits=10,
+                                                  label=TransitLabel.PLANET)
     non_planet_tic_id_and_sector_list = download_tess_primary_mission_non_confirmed_nor_candidate_exofop_planet_list()
     non_planet_meta_data_list = add_splits_and_labels(non_planet_tic_id_and_sector_list, number_of_splits=10,
-                                                      label='non_planet')
-    pass
+                                                      label=TransitLabel.NON_PLANET)
+    metadata_data_frame = pd.DataFrame(planet_meta_data_list + non_planet_meta_data_list,
+                                       columns=[TransitMetadataColumn.TIC_ID, TransitMetadataColumn.SECTOR,
+                                                TransitMetadataColumn.LABEL, TransitMetadataColumn.SPLIT])
+    metadata_data_frame.to_csv('transit_metadata.csv')
 
 
 if __name__ == '__main__':
