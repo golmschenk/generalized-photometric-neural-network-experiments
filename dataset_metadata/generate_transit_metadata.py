@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Tuple, Dict
 
+from ramjet.data_interface.tess_data_interface import TessDataInterface
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
 
 
@@ -107,10 +108,38 @@ def add_splits_and_labels(tic_id_and_sector_list: List[Tuple[int, int]], number_
     return tuple_list
 
 
+def download_tess_primary_mission_non_confirmed_nor_candidate_exofop_planet_list(limit: int = 10000
+                                                                                 ) -> List[Tuple[int, int]]:
+    """
+    Downloads from MAST a list of `(tic_id, sector)` tuples for any targets which are not candidate nor confirmed
+    ExoFOP planets in the TESS primary mission data (sectors 1-26 inclusive).
+
+    :param limit: The limit for the size of the tuple list.
+    :return: The list of TIC ID and sector pairs.
+    """
+    observations = TessDataInterface().get_all_two_minute_single_sector_observations()
+    primary_mission_observations = observations[observations['Sector'] <= 26]
+    tess_toi_data_interface = TessToiDataInterface()
+    toi_dispositions = tess_toi_data_interface.toi_dispositions
+    candidate_or_confirmed_planet_disposition_labels = [ExofopDisposition.CONFIRMED_PLANET.value,
+                                                        ExofopDisposition.KEPLER_CONFIRMED_PLANET.value,
+                                                        ExofopDisposition.PLANET_CANDIDATE.value]
+    candidate_or_confirmed_planet_dispositions = toi_dispositions[
+        toi_dispositions[ToiColumns.disposition.value].isin(candidate_or_confirmed_planet_disposition_labels)]
+    candidate_or_confirmed_planet_tic_ids = candidate_or_confirmed_planet_dispositions[ToiColumns.tic_id.value].values
+    non_candidate_nor_confirmed_observations = primary_mission_observations[
+        ~observations['TIC ID'].isin(candidate_or_confirmed_planet_tic_ids)]
+    tic_id_and_sector_list = list(map(tuple, non_candidate_nor_confirmed_observations[['TIC ID', 'Sector']].values))
+    return tic_id_and_sector_list
+
+
 def generate_transit_metadata() -> None:
     planet_tic_id_and_sector_list = \
         download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list()
     planet_meta_data_list = add_splits_and_labels(planet_tic_id_and_sector_list, number_of_splits=10, label='planet')
+    non_planet_tic_id_and_sector_list = download_tess_primary_mission_non_confirmed_nor_candidate_exofop_planet_list()
+    non_planet_meta_data_list = add_splits_and_labels(non_planet_tic_id_and_sector_list, number_of_splits=10,
+                                                      label='non_planet')
     pass
 
 
