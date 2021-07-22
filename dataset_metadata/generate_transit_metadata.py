@@ -170,7 +170,7 @@ def generate_transit_metadata() -> None:
     metadata_data_frame = pd.DataFrame(planet_meta_data_list + non_planet_meta_data_list,
                                        columns=[TransitMetadataColumn.TIC_ID, TransitMetadataColumn.SECTOR,
                                                 TransitMetadataColumn.LABEL, TransitMetadataColumn.SPLIT])
-    metadata_data_frame.to_csv('transit_metadata.csv')
+    metadata_data_frame.to_csv('dataset_metadata/transit_metadata.csv', index=False)
 
 
 if __name__ == '__main__':
