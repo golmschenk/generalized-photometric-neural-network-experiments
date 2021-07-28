@@ -1,11 +1,19 @@
+from typing import Tuple, List
+
 import numpy as np
-from bokeh.io import show, export_svg, export_svgs
-from bokeh.models import ColumnDataSource, FuncTickFormatter, TickFormatter, PrintfTickFormatter, Column, Band, Row
+import io
+import pandas as pd
+import requests
+from astropy.io import ascii
+from pathlib import Path
+from bokeh.io import show
+from bokeh.models import ColumnDataSource, PrintfTickFormatter, Row
 from bokeh.plotting import Figure
 from bs4 import BeautifulSoup
 from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
 
+from dataset_metadata.transit_metadata import split_tic_id_and_sector_list_equally
 from ramjet.data_interface.tess_data_interface import TessDataInterface
 
 try:
@@ -13,20 +21,19 @@ try:
 except ImportError:
     from backports.strenum import StrEnum
 
-import io
-import pandas as pd
-import requests
-from astropy.io import ascii
-import altair as alt
+metadata_csv_path = Path('dataset_metadata/flare_metadata.csv')
+light_curve_directory = Path('dataset_metadata/flare_light_curves')
 
 
-class ColumnName:
+class MetadataColumnName:
     """
     An enum of the flare metadata column names.
     """
     TIC_ID = 'tic_id'
+    SECTOR = 'sector'
     FLARE_FREQUENCY_DISTRIBUTION_SLOPE = 'flare_frequency_distribution_slope'
     FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT = 'flare_frequency_distribution_intercept'
+    SPLIT = 'split'
 
 
 def download_maximilian_gunther_metadata_data_frame() -> pd.DataFrame:
@@ -51,9 +58,9 @@ def download_maximilian_gunther_metadata_data_frame() -> pd.DataFrame:
     non_duplicate_paper_data_frame = non_na_paper_data_frame.drop_duplicates(subset=['TESS'], keep='first')
 
     metadata_data_frame = pd.DataFrame({
-        ColumnName.TIC_ID: non_duplicate_paper_data_frame['TESS'],
-        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: non_duplicate_paper_data_frame['alpha-FFD'],
-        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT: non_duplicate_paper_data_frame['beta-FFD'],
+        MetadataColumnName.TIC_ID: non_duplicate_paper_data_frame['TESS'],
+        MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: non_duplicate_paper_data_frame['alpha-FFD'],
+        MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT: non_duplicate_paper_data_frame['beta-FFD'],
     })
     return metadata_data_frame
 
@@ -70,12 +77,12 @@ def download_tess_sector_one_to_three_non_flaring_metadata_data_frame(flaring_me
     all_observations = TessDataInterface().get_all_two_minute_single_sector_observations()
     sector_one_to_three_observations = all_observations[all_observations['Sector'] <= 3]
     non_flaring_observations = sector_one_to_three_observations[
-        ~sector_one_to_three_observations['TIC ID'].isin(flaring_metadata_data_frame[ColumnName.TIC_ID])]
-    non_flaring_tic_ids = non_flaring_observations[ColumnName.TIC_ID].unique()
+        ~sector_one_to_three_observations['TIC ID'].isin(flaring_metadata_data_frame[MetadataColumnName.TIC_ID])]
+    non_flaring_tic_ids = non_flaring_observations[MetadataColumnName.TIC_ID].unique()
     non_flaring_data_frame = pd.DataFrame({
-        ColumnName.TIC_ID: non_flaring_tic_ids,
-        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: pd.NA,
-        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT: pd.NA,
+        MetadataColumnName.TIC_ID: non_flaring_tic_ids,
+        MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: pd.NA,
+        MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT: pd.NA,
     })
     return non_flaring_data_frame
 
@@ -84,11 +91,54 @@ def download_flare_metadata_csv() -> None:
     """
     Downloads the metadata for the flare application to a CSV.
     """
-    flaring_metadata_data_frame = download_maximilian_gunther_metadata_data_frame()
-    non_flaring_metadata_data_frame = download_tess_sector_one_to_three_non_flaring_metadata_data_frame(
-        flaring_metadata_data_frame)
-    metadata_data_frame = flaring_metadata_data_frame.append(non_flaring_metadata_data_frame)
-    metadata_data_frame.to_csv('dataset_metadata/flare_metadata.csv', index=False)
+    flaring_target_metadata_data_frame = download_maximilian_gunther_metadata_data_frame()
+    non_flaring_target_metadata_data_frame = download_tess_sector_one_to_three_non_flaring_metadata_data_frame(
+        flaring_target_metadata_data_frame)
+    tess_data_interface = TessDataInterface()
+    labeled_tuple_list: List[Tuple[int, int, float, float, int]] = []
+    flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
+    for tic_id in flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values:
+        sectors = tess_data_interface.get_sectors_target_appears_in(tic_id)
+        for sector in sectors:
+            if sector <= 3:
+                flaring_tic_id_and_sector_list.append((tic_id, sector))
+    flaring_splits = split_tic_id_and_sector_list_equally(flaring_tic_id_and_sector_list, number_of_splits=10)
+    for split_index, tic_id_and_sector_split in enumerate(flaring_splits):
+        for tic_id, sector in tic_id_and_sector_split:
+            labeled_tuple_list.append(
+                (tic_id, sector,
+                 flaring_target_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
+                 flaring_target_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
+                 split_index)
+            )
+    non_flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
+    for tic_id in non_flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values:
+        sectors = tess_data_interface.get_sectors_target_appears_in(tic_id)
+        for sector in sectors:
+            if sector <= 3:
+                non_flaring_tic_id_and_sector_list.append((tic_id, sector))
+    non_flaring_splits = split_tic_id_and_sector_list_equally(non_flaring_tic_id_and_sector_list, number_of_splits=10)
+    for split_index, tic_id_and_sector_split in enumerate(non_flaring_splits):
+        for tic_id, sector in tic_id_and_sector_split:
+            labeled_tuple_list.append((tic_id, sector, pd.NA, pd.NA, split_index))
+    metadata_data_frame = pd.DataFrame(labeled_tuple_list,
+                                       columns=[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR,
+                                                MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE,
+                                                MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT,
+                                                MetadataColumnName.SPLIT])
+    metadata_data_frame.to_csv(metadata_csv_path, index=False)
+
+
+def download_light_curves_for_metadata() -> None:
+    """
+    Downloads the light curves for the metadata.
+    """
+    metadata_data_frame = pd.read_csv(metadata_csv_path, index=False)
+    tess_data_interface = TessDataInterface()
+    for row_index, row in metadata_data_frame.iterrows():
+        tess_data_interface.download_two_minute_cadence_lightcurve(tic_id=row[MetadataColumnName.TIC_ID],
+                                                                   sector=row[MetadataColumnName.SECTOR],
+                                                                   save_directory=light_curve_directory)
 
 
 def show_flare_frequency_distribution_plots() -> None:
@@ -98,10 +148,10 @@ def show_flare_frequency_distribution_plots() -> None:
     metadata_data_frame = pd.read_csv('dataset_metadata/flare_metadata.csv')
     flaring_metadata_data_frame = metadata_data_frame.dropna()
     flaring_metadata_data_frame['y_intercept'] = flaring_metadata_data_frame[
-        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
+        MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
     flaring_metadata_data_frame['x_intercept'] = (
             -flaring_metadata_data_frame['y_intercept'] /
-            flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
+            flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
     )
     data_source = ColumnDataSource(flaring_metadata_data_frame)
     ffd_figure = Figure(x_range=(0, flaring_metadata_data_frame['x_intercept'].max()),
@@ -117,9 +167,9 @@ def show_flare_frequency_distribution_plots() -> None:
     upper_bound_probability = 0.5 + half_confidence
 
     slope_distribution_figure = Figure()
-    slope_kernel = gaussian_kde(flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
-    slope_max = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].max()
-    slope_min = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].min()
+    slope_kernel = gaussian_kde(flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
+    slope_max = flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].max()
+    slope_min = flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].min()
     slope_difference = slope_max - slope_min
     slope_margin = slope_difference * 0.05
     slope_plotting_positions = np.linspace(slope_min - slope_margin, slope_max + slope_margin, 500)
@@ -138,9 +188,10 @@ def show_flare_frequency_distribution_plots() -> None:
     slope_distribution_figure.line(slope_plotting_positions, slope_pdf)
 
     intercept_distribution_figure = Figure()
-    intercept_kernel = gaussian_kde(flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
-    intercept_max = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].max()
-    intercept_min = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].min()
+    intercept_kernel = gaussian_kde(flaring_metadata_data_frame[
+                                        MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
+    intercept_max = flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].max()
+    intercept_min = flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].min()
     intercept_difference = intercept_max - intercept_min
     intercept_margin = intercept_difference * 0.05
     intercept_plotting_positions = np.linspace(intercept_min - intercept_margin, intercept_max + intercept_margin, 500)

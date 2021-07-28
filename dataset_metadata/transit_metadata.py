@@ -1,6 +1,8 @@
 """
 A script to generate the metadata for the experiments.
 """
+from pathlib import Path
+
 try:
     from enum import StrEnum
 except ImportError:
@@ -16,7 +18,11 @@ from ramjet.data_interface.tess_data_interface import TessDataInterface
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
 
 
-class TransitMetadataColumn(StrEnum):
+metadata_csv_path = Path('dataset_metadata/transit_metadata.csv')
+light_curve_directory = Path('dataset_metadata/transit_light_curves')
+
+
+class MetadataColumnName(StrEnum):
     """
     The list of the meta data columns for the transit data set.
     """
@@ -168,9 +174,21 @@ def generate_transit_metadata() -> None:
     non_planet_meta_data_list = add_splits_and_labels(non_planet_tic_id_and_sector_list, number_of_splits=10,
                                                       label=TransitLabel.NON_PLANET)
     metadata_data_frame = pd.DataFrame(planet_meta_data_list + non_planet_meta_data_list,
-                                       columns=[TransitMetadataColumn.TIC_ID, TransitMetadataColumn.SECTOR,
-                                                TransitMetadataColumn.LABEL, TransitMetadataColumn.SPLIT])
-    metadata_data_frame.to_csv('dataset_metadata/transit_metadata.csv', index=False)
+                                       columns=[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR,
+                                                MetadataColumnName.LABEL, MetadataColumnName.SPLIT])
+    metadata_data_frame.to_csv(metadata_csv_path, index=False)
+
+
+def download_light_curves_for_metadata() -> None:
+    """
+    Downloads the light curves for the metadata.
+    """
+    metadata_data_frame = pd.read_csv(metadata_csv_path, index=False)
+    tess_data_interface = TessDataInterface()
+    for row_index, row in metadata_data_frame.iterrows():
+        tess_data_interface.download_two_minute_cadence_lightcurve(tic_id=row[MetadataColumnName.TIC_ID],
+                                                                   sector=row[MetadataColumnName.SECTOR],
+                                                                   save_directory=light_curve_directory)
 
 
 if __name__ == '__main__':
