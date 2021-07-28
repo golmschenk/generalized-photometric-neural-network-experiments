@@ -1,9 +1,12 @@
 import numpy as np
-from bokeh.io import show
+from bokeh.io import show, export_svg, export_svgs
 from bokeh.models import ColumnDataSource, FuncTickFormatter, TickFormatter, PrintfTickFormatter, Column, Band, Row
 from bokeh.plotting import Figure
+from bs4 import BeautifulSoup
 from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
+
+from ramjet.data_interface.tess_data_interface import TessDataInterface
 
 try:
     from enum import StrEnum
@@ -26,17 +29,20 @@ class ColumnName:
     FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT = 'flare_frequency_distribution_intercept'
 
 
-def download_maximilian_gunther_meta_data() -> None:
+def download_maximilian_gunther_metadata_data_frame() -> pd.DataFrame:
     """
     Gets the relevant metadata from the flare catalog paper by Maximilian Gunther et al.
     https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a
 
     :return: The data frame of the TIC IDs and flare statistics.
     """
-    # noinspection SpellCheckingInspection
-    paper_data_table_url = 'https://cfn-live-content-bucket-iop-org.s3.amazonaws.com/journals/1538-3881/159/2/60/1/' \
-                           'ajab5d3at1_mrt.txt?AWSAccessKeyId=AKIAYDKQL6LTV7YY2HIK&Expires=1627329721&' \
-                           'Signature=y5iIOy9UA9ax0TuPVZNVf8hClhY%3D'
+    request_headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
+                                     '(KHTML, like Gecko) Version/14.1.2 Safari/605.1.15'}  # Prevent bot blocking.
+    paper_page_response = requests.get('https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a',
+                                       headers=request_headers)
+    paper_page_soup = BeautifulSoup(paper_page_response.content, 'html.parser')
+    table_data_link_element = paper_page_soup.find(class_='wd-jnl-art-btn-table-data')
+    paper_data_table_url = table_data_link_element['href']
     paper_data_table_response = requests.get(paper_data_table_url)
     paper_data_table = ascii.read(io.BytesIO(paper_data_table_response.content))
     paper_data_frame = paper_data_table.to_pandas()
@@ -49,6 +55,39 @@ def download_maximilian_gunther_meta_data() -> None:
         ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: non_duplicate_paper_data_frame['alpha-FFD'],
         ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT: non_duplicate_paper_data_frame['beta-FFD'],
     })
+    return metadata_data_frame
+
+
+def download_tess_sector_one_to_three_non_flaring_metadata_data_frame(flaring_metadata_data_frame: pd.DataFrame
+                                                                      ) -> pd.DataFrame:
+    """
+    Given the metadata data frame of the flaring targets, gets the non-flaring targets in the 2-minute cadence
+    TESS data for sectors 1-3.
+
+    :param flaring_metadata_data_frame: The flaring target metadata.
+    :return: The non-flaring target metadata.
+    """
+    all_observations = TessDataInterface().get_all_two_minute_single_sector_observations()
+    sector_one_to_three_observations = all_observations[all_observations['Sector'] <= 3]
+    non_flaring_observations = sector_one_to_three_observations[
+        ~sector_one_to_three_observations['TIC ID'].isin(flaring_metadata_data_frame[ColumnName.TIC_ID])]
+    non_flaring_tic_ids = non_flaring_observations[ColumnName.TIC_ID].unique()
+    non_flaring_data_frame = pd.DataFrame({
+        ColumnName.TIC_ID: non_flaring_tic_ids,
+        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: pd.NA,
+        ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT: pd.NA,
+    })
+    return non_flaring_data_frame
+
+
+def download_flare_metadata_csv() -> None:
+    """
+    Downloads the metadata for the flare application to a CSV.
+    """
+    flaring_metadata_data_frame = download_maximilian_gunther_metadata_data_frame()
+    non_flaring_metadata_data_frame = download_tess_sector_one_to_three_non_flaring_metadata_data_frame(
+        flaring_metadata_data_frame)
+    metadata_data_frame = flaring_metadata_data_frame.append(non_flaring_metadata_data_frame)
     metadata_data_frame.to_csv('dataset_metadata/flare_metadata.csv', index=False)
 
 
@@ -56,15 +95,17 @@ def show_flare_frequency_distribution_plots() -> None:
     """
     Show some plots about the flare frequency distribution statistics.
     """
-    flare_metadata_data_frame = pd.read_csv('dataset_metadata/flare_metadata.csv')
-    flare_metadata_data_frame['y_intercept'] = flare_metadata_data_frame[
+    metadata_data_frame = pd.read_csv('dataset_metadata/flare_metadata.csv')
+    flaring_metadata_data_frame = metadata_data_frame.dropna()
+    flaring_metadata_data_frame['y_intercept'] = flaring_metadata_data_frame[
         ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
-    flare_metadata_data_frame['x_intercept'] = (-flare_metadata_data_frame['y_intercept'] /
-                                                flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
-                                                )
-    data_source = ColumnDataSource(flare_metadata_data_frame)
-    ffd_figure = Figure(x_range=(0, flare_metadata_data_frame['x_intercept'].max()),
-                        y_range=(0, flare_metadata_data_frame['y_intercept'].max()))
+    flaring_metadata_data_frame['x_intercept'] = (
+            -flaring_metadata_data_frame['y_intercept'] /
+            flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
+    )
+    data_source = ColumnDataSource(flaring_metadata_data_frame)
+    ffd_figure = Figure(x_range=(0, flaring_metadata_data_frame['x_intercept'].max()),
+                        y_range=(0, flaring_metadata_data_frame['y_intercept'].max()))
     ffd_figure.segment(x0=0, y0='y_intercept', x1='x_intercept', y1=0, source=data_source, color='firebrick',
                        alpha=0.2)
     ffd_figure.yaxis.formatter = PrintfTickFormatter(format='10^%s')
@@ -76,9 +117,9 @@ def show_flare_frequency_distribution_plots() -> None:
     upper_bound_probability = 0.5 + half_confidence
 
     slope_distribution_figure = Figure()
-    slope_kernel = gaussian_kde(flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
-    slope_max = flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].max()
-    slope_min = flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].min()
+    slope_kernel = gaussian_kde(flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
+    slope_max = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].max()
+    slope_min = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].min()
     slope_difference = slope_max - slope_min
     slope_margin = slope_difference * 0.05
     slope_plotting_positions = np.linspace(slope_min - slope_margin, slope_max + slope_margin, 500)
@@ -97,9 +138,9 @@ def show_flare_frequency_distribution_plots() -> None:
     slope_distribution_figure.line(slope_plotting_positions, slope_pdf)
 
     intercept_distribution_figure = Figure()
-    intercept_kernel = gaussian_kde(flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
-    intercept_max = flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].max()
-    intercept_min = flare_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].min()
+    intercept_kernel = gaussian_kde(flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
+    intercept_max = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].max()
+    intercept_min = flaring_metadata_data_frame[ColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].min()
     intercept_difference = intercept_max - intercept_min
     intercept_margin = intercept_difference * 0.05
     intercept_plotting_positions = np.linspace(intercept_min - intercept_margin, intercept_max + intercept_margin, 500)
@@ -122,4 +163,4 @@ def show_flare_frequency_distribution_plots() -> None:
 
 
 if __name__ == '__main__':
-    show_flare_frequency_distribution_plots()
+    download_flare_metadata_csv()
