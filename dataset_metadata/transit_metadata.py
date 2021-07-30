@@ -1,6 +1,7 @@
 """
 A script to generate the metadata for the experiments.
 """
+from random import Random
 from pathlib import Path
 
 try:
@@ -14,7 +15,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Tuple, Dict
 
-from ramjet.data_interface.tess_data_interface import TessDataInterface
+from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
 
 
@@ -157,9 +158,14 @@ def download_tess_primary_mission_non_confirmed_nor_candidate_exofop_planet_list
         toi_dispositions[ToiColumns.disposition.value].isin(candidate_or_confirmed_planet_disposition_labels)]
     candidate_or_confirmed_planet_tic_ids = candidate_or_confirmed_planet_dispositions[ToiColumns.tic_id.value].values
     non_candidate_nor_confirmed_observations = primary_mission_observations[
-        ~observations['TIC ID'].isin(candidate_or_confirmed_planet_tic_ids)]
-    tic_id_and_sector_list = list(map(tuple, non_candidate_nor_confirmed_observations[['TIC ID', 'Sector']].values))
-    return tic_id_and_sector_list
+        ~observations[TessColumnName.TIC_ID].isin(candidate_or_confirmed_planet_tic_ids)]
+    tic_id_and_sector_list = list(map(tuple, non_candidate_nor_confirmed_observations[
+        [TessColumnName.TIC_ID, TessColumnName.SECTOR]].values))
+    random = Random()
+    random.seed(0)
+    random.shuffle(tic_id_and_sector_list)
+    reduced_tic_id_and_sector_list = tic_id_and_sector_list[:limit]
+    return reduced_tic_id_and_sector_list
 
 
 def generate_transit_metadata() -> None:

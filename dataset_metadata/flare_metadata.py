@@ -1,3 +1,5 @@
+from random import Random
+
 from typing import Tuple, List
 
 import numpy as np
@@ -14,7 +16,7 @@ from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
 
 from dataset_metadata.transit_metadata import split_tic_id_and_sector_list_equally
-from ramjet.data_interface.tess_data_interface import TessDataInterface
+from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 
 try:
     from enum import StrEnum
@@ -48,6 +50,9 @@ def download_maximilian_gunther_metadata_data_frame() -> pd.DataFrame:
     paper_page_response = requests.get('https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a',
                                        headers=request_headers)
     paper_page_soup = BeautifulSoup(paper_page_response.content, 'html.parser')
+    if 'captcha' in paper_page_soup.find('title').text.lower():
+        raise ConnectionError('The journal page (correctly) thinks this is a bot. Manually visit '
+                              'https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a then try again.')
     table_data_link_element = paper_page_soup.find(class_='wd-jnl-art-btn-table-data')
     paper_data_table_url = table_data_link_element['href']
     paper_data_table_response = requests.get(paper_data_table_url)
@@ -77,8 +82,9 @@ def download_tess_sector_one_to_three_non_flaring_metadata_data_frame(flaring_me
     all_observations = TessDataInterface().get_all_two_minute_single_sector_observations()
     sector_one_to_three_observations = all_observations[all_observations['Sector'] <= 3]
     non_flaring_observations = sector_one_to_three_observations[
-        ~sector_one_to_three_observations['TIC ID'].isin(flaring_metadata_data_frame[MetadataColumnName.TIC_ID])]
-    non_flaring_tic_ids = non_flaring_observations[MetadataColumnName.TIC_ID].unique()
+        ~sector_one_to_three_observations[TessColumnName.TIC_ID].isin(
+            flaring_metadata_data_frame[MetadataColumnName.TIC_ID])]
+    non_flaring_tic_ids = non_flaring_observations[TessColumnName.TIC_ID].unique()
     non_flaring_data_frame = pd.DataFrame({
         MetadataColumnName.TIC_ID: non_flaring_tic_ids,
         MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE: pd.NA,
@@ -87,7 +93,7 @@ def download_tess_sector_one_to_three_non_flaring_metadata_data_frame(flaring_me
     return non_flaring_data_frame
 
 
-def download_flare_metadata_csv() -> None:
+def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
     """
     Downloads the metadata for the flare application to a CSV.
     """
@@ -105,10 +111,12 @@ def download_flare_metadata_csv() -> None:
     flaring_splits = split_tic_id_and_sector_list_equally(flaring_tic_id_and_sector_list, number_of_splits=10)
     for split_index, tic_id_and_sector_split in enumerate(flaring_splits):
         for tic_id, sector in tic_id_and_sector_split:
+            row = flaring_target_metadata_data_frame[
+                flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID] == tic_id].iloc[0]
             labeled_tuple_list.append(
                 (tic_id, sector,
-                 flaring_target_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
-                 flaring_target_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
+                 row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
+                 row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
                  split_index)
             )
     non_flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
@@ -117,16 +125,20 @@ def download_flare_metadata_csv() -> None:
         for sector in sectors:
             if sector <= 3:
                 non_flaring_tic_id_and_sector_list.append((tic_id, sector))
+    random = Random()
+    random.seed(0)
+    random.shuffle(non_flaring_tic_id_and_sector_list)
+    non_flaring_tic_id_and_sector_list = non_flaring_tic_id_and_sector_list[:non_flaring_limit]
     non_flaring_splits = split_tic_id_and_sector_list_equally(non_flaring_tic_id_and_sector_list, number_of_splits=10)
     for split_index, tic_id_and_sector_split in enumerate(non_flaring_splits):
         for tic_id, sector in tic_id_and_sector_split:
-            labeled_tuple_list.append((tic_id, sector, pd.NA, pd.NA, split_index))
+            labeled_tuple_list.append((tic_id, sector, np.NaN, np.NaN, split_index))
     metadata_data_frame = pd.DataFrame(labeled_tuple_list,
                                        columns=[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR,
                                                 MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE,
                                                 MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT,
                                                 MetadataColumnName.SPLIT])
-    metadata_data_frame.to_csv(metadata_csv_path, index=False)
+    metadata_data_frame.to_csv(metadata_csv_path, index=False, na_rep='na')
 
 
 def download_light_curves_for_metadata() -> None:
