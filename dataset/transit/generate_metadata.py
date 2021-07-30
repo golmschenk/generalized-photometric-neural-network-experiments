@@ -1,45 +1,16 @@
 """
 A script to generate the metadata for the experiments.
 """
-from random import Random
-from pathlib import Path
-
-try:
-    from enum import StrEnum
-except ImportError:
-    from backports.strenum import StrEnum
-
-from collections import defaultdict
-
 import numpy as np
 import pandas as pd
+from random import Random
+from collections import defaultdict
 from typing import List, Tuple, Dict
 
+from dataset.transit.names_and_paths import MetadataColumnName, TransitLabel, metadata_csv_path
 from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
 
-
-transit_data_directory = Path('dataset/transit')
-metadata_csv_path = transit_data_directory.joinpath('metadata.csv')
-light_curve_directory = transit_data_directory.joinpath('light_curves')
-
-
-class MetadataColumnName(StrEnum):
-    """
-    The list of the meta data columns for the transit data set.
-    """
-    TIC_ID = 'tic_id'
-    SECTOR = 'sector'
-    LABEL = 'label'
-    SPLIT = 'split'
-
-
-class TransitLabel(StrEnum):
-    """
-    The list of possible labels for the transit data set.
-    """
-    PLANET = 'planet'
-    NON_PLANET = 'non_planet'
 
 
 def download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list() -> List[Tuple[int, int]]:
@@ -184,18 +155,6 @@ def generate_transit_metadata() -> None:
                                        columns=[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR,
                                                 MetadataColumnName.LABEL, MetadataColumnName.SPLIT])
     metadata_data_frame.to_csv(metadata_csv_path, index=False)
-
-
-def download_light_curves_for_metadata() -> None:
-    """
-    Downloads the light curves for the metadata.
-    """
-    metadata_data_frame = pd.read_csv(metadata_csv_path, index=False)
-    tess_data_interface = TessDataInterface()
-    for row_index, row in metadata_data_frame.iterrows():
-        tess_data_interface.download_two_minute_cadence_lightcurve(tic_id=row[MetadataColumnName.TIC_ID],
-                                                                   sector=row[MetadataColumnName.SECTOR],
-                                                                   save_directory=light_curve_directory)
 
 
 if __name__ == '__main__':
