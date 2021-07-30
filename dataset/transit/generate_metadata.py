@@ -19,8 +19,9 @@ from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnN
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
 
 
-metadata_csv_path = Path('dataset_metadata/transit_metadata.csv')
-light_curve_directory = Path('dataset_metadata/transit_light_curves')
+transit_data_directory = Path('dataset/transit')
+metadata_csv_path = transit_data_directory.joinpath('metadata.csv')
+light_curve_directory = transit_data_directory.joinpath('light_curves')
 
 
 class MetadataColumnName(StrEnum):

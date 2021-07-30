@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
 
-from dataset_metadata.transit_metadata import split_tic_id_and_sector_list_equally
+from dataset.transit.generate_metadata import split_tic_id_and_sector_list_equally
 from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 
 try:
@@ -23,8 +23,9 @@ try:
 except ImportError:
     from backports.strenum import StrEnum
 
-metadata_csv_path = Path('dataset_metadata/flare_metadata.csv')
-light_curve_directory = Path('dataset_metadata/flare_light_curves')
+flare_data_directory = Path('dataset/flare')
+metadata_csv_path = flare_data_directory.joinpath('metadata.csv')
+light_curve_directory = flare_data_directory.joinpath('light_curves')
 
 
 class MetadataColumnName:
@@ -157,7 +158,7 @@ def show_flare_frequency_distribution_plots() -> None:
     """
     Show some plots about the flare frequency distribution statistics.
     """
-    metadata_data_frame = pd.read_csv('dataset_metadata/flare_metadata.csv')
+    metadata_data_frame = pd.read_csv('dataset_metadata/metadata.csv')
     flaring_metadata_data_frame = metadata_data_frame.dropna()
     flaring_metadata_data_frame['y_intercept'] = flaring_metadata_data_frame[
         MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
