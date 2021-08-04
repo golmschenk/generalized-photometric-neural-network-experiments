@@ -30,8 +30,13 @@ def download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sec
     primary_mission_confirmed_planet_dispositions = confirmed_planet_dispositions[
         (confirmed_planet_dispositions[ToiColumns.sector.value] >= 1) &
         (confirmed_planet_dispositions[ToiColumns.sector.value] <= 26)]
+    tess_data_interface = TessDataInterface()
     for index, row in primary_mission_confirmed_planet_dispositions.iterrows():
-        tic_id_and_sector_list.append((row[ToiColumns.tic_id.value], row[ToiColumns.sector.value]))
+        tic_id = row[ToiColumns.tic_id.value]
+        sector = row[ToiColumns.sector.value]
+        # Check that the target appears in the 2 minute cadence data in that sector.
+        if sector in tess_data_interface.get_sectors_target_appears_in(tic_id):
+            tic_id_and_sector_list.append((tic_id, sector))
     return tic_id_and_sector_list
 
 
