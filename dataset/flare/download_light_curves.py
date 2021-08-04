@@ -17,3 +17,7 @@ def download_light_curves_for_metadata() -> None:
         tess_data_interface.download_two_minute_cadence_lightcurve(tic_id=row[MetadataColumnName.TIC_ID],
                                                                    sector=row[MetadataColumnName.SECTOR],
                                                                    save_directory=light_curve_directory)
+
+
+if __name__ == '__main__':
+    download_light_curves_for_metadata()
