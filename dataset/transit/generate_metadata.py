@@ -7,10 +7,9 @@ from random import Random
 from collections import defaultdict
 from typing import List, Tuple, Dict
 
-from dataset.transit.names_and_paths import MetadataColumnName, TransitLabel, metadata_csv_path
+from dataset.transit.names_and_paths import MetadataColumnName, TransitLabel, metadata_csv_path, transit_data_directory
 from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
-
 
 
 def download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sector_list() -> List[Tuple[int, int]]:
@@ -21,7 +20,7 @@ def download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sec
     :return: The list of TIC ID and sector pairs.
     """
     tic_id_and_sector_list = []
-    tess_toi_data_interface = TessToiDataInterface()
+    tess_toi_data_interface = TessToiDataInterface(transit_data_directory.joinpath('.toi_data'))
     toi_dispositions = tess_toi_data_interface.toi_dispositions
     confirmed_planet_disposition_labels = [ExofopDisposition.CONFIRMED_PLANET.value,
                                            ExofopDisposition.KEPLER_CONFIRMED_PLANET.value]
@@ -126,7 +125,7 @@ def download_tess_primary_mission_non_confirmed_nor_candidate_exofop_planet_list
     """
     observations = TessDataInterface().get_all_two_minute_single_sector_observations()
     primary_mission_observations = observations[observations['Sector'] <= 26]
-    tess_toi_data_interface = TessToiDataInterface()
+    tess_toi_data_interface = TessToiDataInterface(transit_data_directory.joinpath('.toi_data'))
     toi_dispositions = tess_toi_data_interface.toi_dispositions
     candidate_or_confirmed_planet_disposition_labels = [ExofopDisposition.CONFIRMED_PLANET.value,
                                                         ExofopDisposition.KEPLER_CONFIRMED_PLANET.value,
