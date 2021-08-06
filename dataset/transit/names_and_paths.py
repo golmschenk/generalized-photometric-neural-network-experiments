@@ -1,6 +1,7 @@
 """
 Names and paths for the transit dataset.
 """
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -28,5 +29,23 @@ class TransitLabel(StrEnum):
     """
     The list of possible labels for the transit data set.
     """
-    PLANET = 'planet'
     NON_PLANET = 'non_planet'
+    PLANET = 'planet'
+
+    def to_int(self) -> int:
+        """
+        Converts the label to a categorical integer representation.
+
+        :return: The float value of the label.
+        """
+        return list(TransitLabel).index(self)
+
+    @classmethod
+    def from_int(cls, integer: int) -> TransitLabel:
+        """
+        Converts an integer label representation to its corresponding label.
+
+        :param integer: The integer representation of the label.
+        :return: The label.
+        """
+        return list(TransitLabel)[integer]

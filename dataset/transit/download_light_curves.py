@@ -13,7 +13,7 @@ def download_light_curves_for_metadata() -> None:
     """
     metadata_data_frame = pd.read_csv(metadata_csv_path, index_col=False)
     tess_data_interface = TessDataInterface()
-    for row_index, row in metadata_data_frame.iterrows():
+    for row_index, row in list(metadata_data_frame.iterrows())[-1:-100:-1]:
         tess_data_interface.download_two_minute_cadence_lightcurve(tic_id=row[MetadataColumnName.TIC_ID],
                                                                    sector=row[MetadataColumnName.SECTOR],
                                                                    save_directory=light_curve_directory)
