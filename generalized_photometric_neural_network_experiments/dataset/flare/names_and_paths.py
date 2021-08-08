@@ -9,7 +9,8 @@ try:
 except ImportError:
     from backports.strenum import StrEnum
 
-flare_data_directory = Path('dataset/flare')
+flare_data_directory = Path('data/flare')
+flare_data_directory.mkdir(parents=True, exist_ok=True)
 metadata_csv_path = flare_data_directory.joinpath('metadata.csv')
 light_curve_directory = flare_data_directory.joinpath('light_curves')
 

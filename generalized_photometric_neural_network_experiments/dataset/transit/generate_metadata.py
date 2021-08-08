@@ -7,7 +7,7 @@ from random import Random
 from collections import defaultdict
 from typing import List, Tuple, Dict
 
-from dataset.transit.names_and_paths import MetadataColumnName, TransitLabel, metadata_csv_path, transit_data_directory
+from generalized_photometric_neural_network_experiments.dataset.transit.names_and_paths import MetadataColumnName, TransitLabel, metadata_csv_path, transit_data_directory
 from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 from ramjet.data_interface.tess_toi_data_interface import TessToiDataInterface, ExofopDisposition, ToiColumns
 

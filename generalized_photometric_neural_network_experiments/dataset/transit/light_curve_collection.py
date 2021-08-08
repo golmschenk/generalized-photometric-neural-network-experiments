@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from dataset.transit.names_and_paths import metadata_csv_path, MetadataColumnName, TransitLabel, light_curve_directory
+from generalized_photometric_neural_network_experiments.dataset.transit.names_and_paths import metadata_csv_path, MetadataColumnName, TransitLabel, light_curve_directory
 from ramjet.data_interface.tess_data_interface import TessDataInterface
 from ramjet.photometric_database.lightcurve_collection import LightcurveCollection
 

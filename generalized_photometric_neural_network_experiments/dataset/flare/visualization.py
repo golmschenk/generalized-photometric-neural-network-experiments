@@ -10,7 +10,7 @@ from bokeh.plotting import Figure
 from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
 
-from dataset.flare.names_and_paths import MetadataColumnName
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import MetadataColumnName
 
 
 def show_flare_frequency_distribution_plots() -> None:

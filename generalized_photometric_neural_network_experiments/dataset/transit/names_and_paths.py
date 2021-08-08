@@ -10,7 +10,8 @@ try:
 except ImportError:
     from backports.strenum import StrEnum
 
-transit_data_directory = Path('dataset/transit')
+transit_data_directory = Path('data/transit')
+transit_data_directory.mkdir(parents=True, exist_ok=True)
 metadata_csv_path = transit_data_directory.joinpath('metadata.csv')
 light_curve_directory = transit_data_directory.joinpath('light_curves')
 

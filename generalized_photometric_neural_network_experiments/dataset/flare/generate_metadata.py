@@ -9,8 +9,8 @@ import requests
 from astropy.io import ascii
 from bs4 import BeautifulSoup
 
-from dataset.flare.names_and_paths import metadata_csv_path, MetadataColumnName
-from dataset.transit.generate_metadata import split_tic_id_and_sector_list_equally
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, MetadataColumnName
+from generalized_photometric_neural_network_experiments.dataset.transit.generate_metadata import split_tic_id_and_sector_list_equally
 from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 
 
