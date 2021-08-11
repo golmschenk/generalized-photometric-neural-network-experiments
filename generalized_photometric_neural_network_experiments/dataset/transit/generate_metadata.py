@@ -29,6 +29,8 @@ def download_tess_primary_mission_confirmed_exofop_planet_transit_tic_id_and_sec
     primary_mission_confirmed_planet_dispositions = confirmed_planet_dispositions[
         (confirmed_planet_dispositions[ToiColumns.sector.value] >= 1) &
         (confirmed_planet_dispositions[ToiColumns.sector.value] <= 26)]
+    primary_mission_confirmed_planet_dispositions = primary_mission_confirmed_planet_dispositions.drop_duplicates(
+        subset=[ToiColumns.tic_id.value, ToiColumns.sector.value])
     tess_data_interface = TessDataInterface()
     for index, row in primary_mission_confirmed_planet_dispositions.iterrows():
         tic_id = row[ToiColumns.tic_id.value]
