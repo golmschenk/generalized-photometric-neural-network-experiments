@@ -1,6 +1,8 @@
 """
 Downloads the light curves for the transit dataset.
 """
+from typing import List
+
 from pathlib import Path
 
 import pandas as pd
@@ -10,12 +12,25 @@ from ramjet.data_interface.tess_data_interface import TessDataInterface
 
 
 def download_light_curves_for_metadata() -> None:
+    """
+    Downloads the light curves for the metadata.
+    """
     metadata_data_frame = pd.read_csv(metadata_csv_path, index_col=False)
+    tic_ids = metadata_data_frame[MetadataColumnName.TIC_ID].values
+    sectors = metadata_data_frame[MetadataColumnName.SECTOR].values
+    download_tess_light_curves_for_tic_ids_and_sectors(tic_ids, sectors)
+
+
+def download_tess_light_curves_for_tic_ids_and_sectors(tic_ids: List[int], sectors: List[int]) -> None:
+    """
+    Downloads the TESS 2-minute cadence light curves for the given TIC ID and sector lists.
+
+    :param tic_ids: The TIC IDs to download light curves for.
+    :param sectors: The sectors to download light curves for.
+    """
     tess_data_interface = TessDataInterface()
     path_data_frame = generate_tic_id_and_sector_mapping_to_light_curve_path_data_frame(light_curve_directory)
-    for row_index, row in list(metadata_data_frame.iterrows()):
-        tic_id = row[MetadataColumnName.TIC_ID]
-        sector = row[MetadataColumnName.SECTOR]
+    for tic_id, sector in zip(tic_ids, sectors):
         try:  # Check if a path already exists for this TIC ID and sector pair.
             existing_path_row = path_data_frame[(path_data_frame['tic_id'] == tic_id) &
                                                 (path_data_frame['sector'] == sector)].iloc[0]
@@ -27,6 +42,12 @@ def download_light_curves_for_metadata() -> None:
 
 
 def generate_tic_id_and_sector_mapping_to_light_curve_path_data_frame(directory: Path) -> pd.DataFrame:
+    """
+    Generates a data frame with existing paths and their corresponding TIC ID and sectors extracted from the path names.
+
+    :param directory: The directory to search for light curves in.
+    :return: The data frame.
+    """
     tess_data_interface = TessDataInterface()
     paths = list(directory.glob('*.fits'))
     tic_ids = []
