@@ -36,9 +36,9 @@ def download_tess_light_curves_for_tic_ids_and_sectors(tic_ids: List[int], secto
                                                 (path_data_frame['sector'] == sector)].iloc[0]
             light_curve_path = existing_path_row['path']
         except IndexError:  # Otherwise, download it.
-            light_curve_path = tess_data_interface.download_two_minute_cadence_lightcurve(
-                tic_id=tic_id, sector=sector, save_directory=light_curve_directory)
-        tess_data_interface.verify_lightcurve(light_curve_path)
+            light_curve_path = tess_data_interface.download_two_minute_cadence_light_curve(tic_id=tic_id, sector=sector,
+                                                                                           save_directory=light_curve_directory)
+        tess_data_interface.verify_light_curve(light_curve_path)
 
 
 def generate_tic_id_and_sector_mapping_to_light_curve_path_data_frame(directory: Path) -> pd.DataFrame:

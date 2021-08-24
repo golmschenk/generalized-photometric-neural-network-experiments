@@ -7,14 +7,14 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from generalized_photometric_neural_network_experiments.dataset.transit.names_and_paths import metadata_csv_path, MetadataColumnName, TransitLabel, light_curve_directory
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, MetadataColumnName, TransitLabel, light_curve_directory
 from ramjet.data_interface.tess_data_interface import TessDataInterface
 from ramjet.photometric_database.light_curve_collection import LightCurveCollection
 
 
-class TransitExperimentLightCurveCollection(LightCurveCollection):
+class FlareExperimentLightCurveCollection(LightCurveCollection):
     """
-    A class to represent a collection of light curves related to the transit experiment.
+    A class to represent a collection of light curves related to the flare experiment.
     """
     tess_data_interface = TessDataInterface()
 
