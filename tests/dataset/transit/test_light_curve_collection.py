@@ -10,7 +10,7 @@ from generalized_photometric_neural_network_experiments.dataset.transit.names_an
 class TestLightCurveCollection:
     @pytest.mark.integration
     def test_transit_experiment_light_curve_collections_contain_correct_counts(self):
-        planet_light_curve_count = 557
+        planet_light_curve_count = 553
         non_planet_light_curve_count = 10000
         assert len(list(TransitExperimentLightCurveCollection().get_paths())
                    ) == planet_light_curve_count + non_planet_light_curve_count
