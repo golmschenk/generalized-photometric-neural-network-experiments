@@ -1,10 +1,10 @@
 from generalized_photometric_neural_network_experiments.dataset.transit.light_curve_collection import \
     TransitExperimentLightCurveCollection
 from generalized_photometric_neural_network_experiments.dataset.transit.names_and_paths import TransitLabel
-from ramjet.photometric_database.standard_and_injected_lightcurve_database import StandardAndInjectedLightcurveDatabase
+from ramjet.photometric_database.standard_and_injected_light_curve_database import StandardAndInjectedLightCurveDatabase
 
 
-class TransitDatabase(StandardAndInjectedLightcurveDatabase):
+class TransitDatabase(StandardAndInjectedLightCurveDatabase):
     def __init__(self):
         super().__init__()
         self.training_standard_light_curve_collections = [

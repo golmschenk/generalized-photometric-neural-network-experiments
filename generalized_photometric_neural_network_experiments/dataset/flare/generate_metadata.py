@@ -114,7 +114,7 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
                                                 MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE,
                                                 MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT,
                                                 MetadataColumnName.SPLIT])
-    metadata_data_frame.to_csv(metadata_csv_path, index=False, na_rep='na')
+    metadata_data_frame.to_csv(metadata_csv_path, index=False, na_rep='NA')
 
 
 if __name__ == '__main__':
