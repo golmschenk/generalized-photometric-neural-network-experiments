@@ -1,10 +1,16 @@
+"""
+Code for calculating the metrics for the flare experiment using thresholded differences for unknown values.
+"""
 from tensorflow.python.keras.losses import MeanSquaredError
 from tensorflow.python.keras import backend
 import tensorflow as tf
 from tensorflow.python.ops import math_ops
 
 
-class FlareThresholdMeanSquaredErrorCalculator:
+class FlareThresholdedCalculator:
+    """
+    A class for calculating the metrics for the flare experiment using thresholded differences for unknown values.
+    """
     def __init__(self, slope_threshold: float, intercept_threshold: float):
         self.slope_threshold = slope_threshold
         self.intercept_threshold = intercept_threshold
