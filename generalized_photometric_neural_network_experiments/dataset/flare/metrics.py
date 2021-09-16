@@ -11,7 +11,8 @@ class FlareThresholdedCalculator:
     """
     A class for calculating the metrics for the flare experiment using thresholded differences for unknown values.
     """
-    def __init__(self, slope_threshold: float, intercept_threshold: float):
+
+    def __init__(self, slope_threshold: float = 0, intercept_threshold: float = 0):
         self.slope_threshold = slope_threshold
         self.intercept_threshold = intercept_threshold
         self.threshold = tf.constant([[self.slope_threshold, self.intercept_threshold]], dtype=tf.float32)
@@ -29,3 +30,15 @@ class FlareThresholdedCalculator:
         absolute_difference = math_ops.abs(y_pred - y_true)
         difference = tf.where(threshold_condition, over_threshold_difference, absolute_difference)
         return difference
+
+    def normalize_based_on_true(self, y_true: tf.Tensor, values_to_normalize: tf.Tensor) -> tf.Tensor:
+        true_slopes = y_true[:, 0]
+        true_slope_standard_deviation = tf.math.reduce_std(tf.boolean_mask(true_slopes, tf.math.is_finite(true_slopes)))
+        true_slope_mean = tf.math.reduce_mean(tf.boolean_mask(true_slopes, tf.math.is_finite(true_slopes)))
+        true_intercepts = y_true[:, 1]
+        true_intercept_standard_deviation = tf.math.reduce_std(tf.boolean_mask(true_intercepts,
+                                                                               tf.math.is_finite(true_intercepts)))
+        true_intercept_mean = tf.math.reduce_mean(tf.boolean_mask(true_intercepts, tf.math.is_finite(true_intercepts)))
+        normalized_values = ((values_to_normalize - [[true_slope_mean, true_intercept_mean]]) /
+                             [[true_slope_standard_deviation, true_intercept_standard_deviation]])
+        return normalized_values
