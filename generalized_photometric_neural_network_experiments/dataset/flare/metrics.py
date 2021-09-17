@@ -11,6 +11,15 @@ class FlareThresholdedCalculator:
     """
     A class for calculating the metrics for the flare experiment using thresholded differences for unknown values.
     """
+    precalculated_slope_mean = -0.9315392038600727
+    precalculated_slope_standard_deviation = 0.38475335278973216
+    precalculated_intercept_mean = 30.09453437876961
+    precalculated_intercept_standard_deviation = 12.749510973110558
+    precalculated_means_tensor = tf.constant([[precalculated_slope_mean, precalculated_intercept_mean]],
+                                             dtype=tf.float32)
+    precalculated_standard_deviations_tensor = tf.constant([[precalculated_slope_standard_deviation,
+                                                             precalculated_intercept_standard_deviation]],
+                                                           dtype=tf.float32)
 
     def __init__(self, slope_threshold: float = 0, intercept_threshold: float = 0):
         self.slope_threshold = slope_threshold
@@ -31,7 +40,16 @@ class FlareThresholdedCalculator:
         difference = tf.where(threshold_condition, over_threshold_difference, absolute_difference)
         return difference
 
-    def normalize_based_on_true(self, y_true: tf.Tensor, values_to_normalize: tf.Tensor) -> tf.Tensor:
+    @staticmethod
+    def normalize_based_on_true(y_true: tf.Tensor, values_to_normalize: tf.Tensor) -> tf.Tensor:
+        """
+        Normalize the values passed based on the true values (likely a batch). Useful for having a weighted
+        training loss based on the scale of the input values.
+
+        :param y_true: The values to normalized by.
+        :param values_to_normalize: The values to normalize.
+        :return: The normalized values.
+        """
         true_slopes = y_true[:, 0]
         true_slope_standard_deviation = tf.math.reduce_std(tf.boolean_mask(true_slopes, tf.math.is_finite(true_slopes)))
         true_slope_mean = tf.math.reduce_mean(tf.boolean_mask(true_slopes, tf.math.is_finite(true_slopes)))
@@ -42,3 +60,27 @@ class FlareThresholdedCalculator:
         normalized_values = ((values_to_normalize - [[true_slope_mean, true_intercept_mean]]) /
                              [[true_slope_standard_deviation, true_intercept_standard_deviation]])
         return normalized_values
+
+    def normalize_based_on_precalculated_flare_metadata(self, unnormalized_values: tf.Tensor) -> tf.Tensor:
+        """
+        Normalize the given set of slope and intercept values based on the precalculated means and standard deviations
+        of the entire metadata set.
+
+        :param unnormalized_values: The values to normalized.
+        :return: The normalized values.
+        """
+        normalized_values = (unnormalized_values - self.precalculated_means_tensor
+                             ) / self.precalculated_standard_deviations_tensor
+        return normalized_values
+
+    def unnormalize_based_on_precalculated_flare_metadata(self, normalized_values: tf.Tensor) -> tf.Tensor:
+        """
+        Unnormalize the given set of normalized slope and intercept values based on the precalculated means and standard
+        deviations of the entire metadata set.
+
+        :param normalized_values: The values to unnormalized.
+        :return: The unnormalized values.
+        """
+        unnormalized_values = (normalized_values * self.precalculated_standard_deviations_tensor
+                               ) + self.precalculated_means_tensor
+        return unnormalized_values
