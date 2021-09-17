@@ -1,7 +1,6 @@
 """
 Code for calculating the metrics for the flare experiment using thresholded differences for unknown values.
 """
-from tensorflow.python.keras.losses import MeanSquaredError
 from tensorflow.python.keras import backend
 import tensorflow as tf
 from tensorflow.python.ops import math_ops

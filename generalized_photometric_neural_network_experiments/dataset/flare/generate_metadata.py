@@ -77,7 +77,7 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
     non_flaring_target_metadata_data_frame = download_tess_sector_one_to_three_non_flaring_metadata_data_frame(
         flaring_target_metadata_data_frame)
     tess_data_interface = TessDataInterface()
-    labeled_tuple_list: List[Tuple[int, int, float, float, int]] = []
+    labeled_tuple_list: List[Tuple[int, int, float, float, float, int]] = []
     flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
     for tic_id in flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values:
         sectors = tess_data_interface.get_sectors_target_appears_in(tic_id)
@@ -89,10 +89,16 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
         for tic_id, sector in tic_id_and_sector_split:
             row = flaring_target_metadata_data_frame[
                 flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID] == tic_id].iloc[0]
+            tic_row = tess_data_interface.get_tess_input_catalog_row(tic_id)
+            luminosity__solar_units = tic_row['lum']
+            if np.isnan(luminosity__solar_units) or luminosity__solar_units == 0:
+                continue
+            luminosity__log_10_solar_units = np.log10(luminosity__solar_units)
             labeled_tuple_list.append(
                 (tic_id, sector,
                  row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
                  row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
+                 luminosity__log_10_solar_units,
                  split_index)
             )
     non_flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
@@ -108,11 +114,18 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
     non_flaring_splits = split_tic_id_and_sector_list_equally(non_flaring_tic_id_and_sector_list, number_of_splits=10)
     for split_index, tic_id_and_sector_split in enumerate(non_flaring_splits):
         for tic_id, sector in tic_id_and_sector_split:
-            labeled_tuple_list.append((tic_id, sector, np.NaN, np.NaN, split_index))
+            tic_row = tess_data_interface.get_tess_input_catalog_row(tic_id)
+            luminosity__solar_units = tic_row['lum']
+            if np.isnan(luminosity__solar_units) or luminosity__solar_units == 0:
+                continue
+            luminosity__log_10_solar_units = np.log10(luminosity__solar_units)
+            labeled_tuple_list.append((tic_id, sector, np.NaN, np.NaN, luminosity__log_10_solar_units, split_index))
     metadata_data_frame = pd.DataFrame(labeled_tuple_list,
-                                       columns=[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR,
+                                       columns=[MetadataColumnName.TIC_ID,
+                                                MetadataColumnName.SECTOR,
                                                 MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE,
                                                 MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT,
+                                                MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS,
                                                 MetadataColumnName.SPLIT])
     metadata_data_frame.to_csv(metadata_csv_path, index=False, na_rep='NA')
 
