@@ -3,7 +3,12 @@ Code for calculating the metrics for the flare experiment using thresholded diff
 """
 from tensorflow.python.keras import backend
 import tensorflow as tf
+from tensorflow.python.keras.losses import LossFunctionWrapper
+from tensorflow.python.keras.metrics import MeanSquaredError, MeanMetricWrapper
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
+
+MeanSquaredError
 
 
 class FlareThresholdedCalculator:
@@ -38,6 +43,19 @@ class FlareThresholdedCalculator:
         absolute_difference = math_ops.abs(y_pred - y_true)
         difference = tf.where(threshold_condition, over_threshold_difference, absolute_difference)
         return difference
+
+    def normalized_thresholded_absolute_difference(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        """
+        Calculates the absolute difference with true NaN values being the difference above a given threshold
+        with the differences normalized by the precalculated means and standard deviations of the entire metadata set.
+
+        :param y_true: The true values, with NaNs being calculated based on the difference above a threshold.
+        :param y_pred: The predicted values.
+        :return: The differences.
+        """
+        difference = self.thresholded_absolute_difference(y_true, y_pred)
+        normalized_difference = self.normalize_based_on_precalculated_flare_metadata(difference)
+        return normalized_difference
 
     @staticmethod
     def normalize_based_on_true(y_true: tf.Tensor, values_to_normalize: tf.Tensor) -> tf.Tensor:
@@ -83,3 +101,15 @@ class FlareThresholdedCalculator:
         unnormalized_values = (normalized_values * self.precalculated_standard_deviations_tensor
                                ) + self.precalculated_means_tensor
         return unnormalized_values
+
+
+class FlareThresholdedError(LossFunctionWrapper):
+    def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='flare_thresholded_error'):
+        calculator = FlareThresholdedCalculator()
+        super().__init__(calculator.normalized_thresholded_absolute_difference, name=name, reduction=reduction)
+
+
+class FlareThresholdedErrorMetric(MeanMetricWrapper):
+    def __init__(self, name='flare_thresholded_error_metric', dtype=None):
+        calculator = FlareThresholdedCalculator()
+        super().__init__(calculator.normalized_thresholded_absolute_difference, name=name, dtype=dtype)
