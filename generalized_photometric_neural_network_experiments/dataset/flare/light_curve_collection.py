@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, MetadataColumnName, TransitLabel, light_curve_directory
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, \
+    MetadataColumnName, light_curve_directory
 from ramjet.data_interface.tess_data_interface import TessDataInterface
 from ramjet.photometric_database.light_curve_collection import LightCurveCollection
 
@@ -18,11 +19,10 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
     """
     tess_data_interface = TessDataInterface()
 
-    def __init__(self, label: Optional[Union[TransitLabel, List[TransitLabel]]] = None,
-                 splits: Optional[List[int]] = None):
+    def __init__(self, is_flaring: Optional[bool] = None, splits: Optional[List[int]] = None):
         super().__init__()
         self.metadata_data_frame = pd.read_csv(metadata_csv_path)
-        self.label: Optional[Union[TransitLabel, List[TransitLabel]]] = label
+        self.is_flaring: Optional[bool] = is_flaring
         self.splits: Optional[List[int]] = splits
 
     def load_times_and_fluxes_from_path(self, path: Path) -> (np.ndarray, np.ndarray):
@@ -35,7 +35,7 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
         fluxes, times = self.tess_data_interface.load_fluxes_and_times_from_fits_file(path)
         return times, fluxes
 
-    def load_label_from_path(self, path: Path) -> Union[float, np.ndarray]:
+    def load_label_from_path(self, path: Path) -> Union[np.ndarray]:
         """
         Loads the label of an example from a corresponding path.
 
@@ -43,21 +43,10 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
         :return: The label.
         """
         tic_id, sector = self.tess_data_interface.get_tic_id_and_sector_from_file_path(path)
-        label = self.get_label_for_tic_id_and_sector_from_metadata(tic_id, sector)
-        label_integer = label.to_int()
-        return float(label_integer)
-
-    def get_label_for_tic_id_and_sector_from_metadata(self, tic_id: int, sector: int) -> TransitLabel:
-        """
-        Gets the label for a given TIC ID and sector from the metadata.
-
-        :param tic_id: The TIC ID to lookup.
-        :param sector: The sector to lookup.
-        :return: The label.
-        """
         metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
-        label: TransitLabel = TransitLabel(metadata_row[MetadataColumnName.LABEL])
-        return label
+        slope = metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
+        intercept = metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
+        return np.array([slope, intercept], dtype=np.float32)
 
     def get_metadata_row_for_tic_id_and_sector(self, tic_id: int, sector: int) -> pd.Series:
         """
@@ -79,10 +68,10 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
 
         :return: An iterable of the light curve paths.
         """
-        return self.get_paths_for_label_and_splits(self.label, self.splits)
+        return self.get_paths_for_label_existence_and_splits(self.is_flaring, self.splits)
 
-    def get_paths_for_label_and_splits(self, label: Optional[Union[TransitLabel, List[TransitLabel]]] = None,
-                                       splits: Optional[List[int]] = None) -> Iterable[Path]:
+    def get_paths_for_label_existence_and_splits(self, is_flaring: Optional[bool] = None,
+                                                 splits: Optional[List[int]] = None) -> Iterable[Path]:
         """
         Gets the paths for a given label and splits.
 
@@ -92,10 +81,15 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
         for fits_path in light_curve_directory.glob('*.fits'):
             tic_id, sector = self.tess_data_interface.get_tic_id_and_sector_from_file_path(fits_path)
             metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
-            if label is not None:
-                if isinstance(label, TransitLabel) and metadata_row[MetadataColumnName.LABEL] != label:
+            if is_flaring is not None:
+                slope_exists_for_row = metadata_row[
+                    MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].notna()
+                intercept_exists_for_row = metadata_row[
+                    MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].notna()
+                assert slope_exists_for_row == intercept_exists_for_row
+                if is_flaring and not slope_exists_for_row:
                     continue
-                elif isinstance(label, list) and metadata_row[MetadataColumnName.LABEL] not in label:
+                if not is_flaring and slope_exists_for_row:
                     continue
             if splits is not None:
                 if metadata_row[MetadataColumnName.SPLIT] not in splits:

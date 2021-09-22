@@ -26,7 +26,7 @@ def show_flare_frequency_distribution_plots() -> None:
     """
     Show some plots about the flare frequency distribution statistics.
     """
-    metadata_data_frame = pd.read_csv('dataset_metadata/metadata.csv')
+    metadata_data_frame = pd.read_csv('data/flare/metadata.csv')
     flaring_metadata_data_frame = metadata_data_frame.dropna()
     flaring_metadata_data_frame['y_intercept'] = flaring_metadata_data_frame[
         MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
@@ -217,3 +217,4 @@ def download_luminosity_distribution(use_existing_csv: bool = False) -> None:
 
 if __name__ == '__main__':
     download_luminosity_distribution(use_existing_csv=True)
+    # show_flare_frequency_distribution_plots()

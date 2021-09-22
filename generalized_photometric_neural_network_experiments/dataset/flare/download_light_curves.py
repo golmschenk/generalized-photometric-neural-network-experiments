@@ -3,10 +3,10 @@ Downloads the light curves for the flare dataset.
 """
 import pandas as pd
 
-from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, \
-    MetadataColumnName
-from generalized_photometric_neural_network_experiments.dataset.transit.download_light_curves import \
+from generalized_photometric_neural_network_experiments.dataset.cross_experiment.download_light_curves import \
     download_tess_light_curves_for_tic_ids_and_sectors
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, \
+    MetadataColumnName, light_curve_directory
 
 
 def download_light_curves_for_metadata() -> None:
@@ -16,7 +16,7 @@ def download_light_curves_for_metadata() -> None:
     metadata_data_frame = pd.read_csv(metadata_csv_path, index_col=False)
     tic_ids = metadata_data_frame[MetadataColumnName.TIC_ID].values
     sectors = metadata_data_frame[MetadataColumnName.SECTOR].values
-    download_tess_light_curves_for_tic_ids_and_sectors(tic_ids, sectors)
+    download_tess_light_curves_for_tic_ids_and_sectors(tic_ids, sectors, light_curve_directory)
 
 
 if __name__ == '__main__':

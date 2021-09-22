@@ -110,8 +110,16 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
     random = Random()
     random.seed(0)
     random.shuffle(non_flaring_tic_id_and_sector_list)
-    non_flaring_tic_id_and_sector_list = non_flaring_tic_id_and_sector_list[:non_flaring_limit]
-    non_flaring_splits = split_tic_id_and_sector_list_equally(non_flaring_tic_id_and_sector_list, number_of_splits=10)
+    non_flaring_tic_id_and_sector_list_with_luminosity: List[Tuple[int, int]] = []
+    for tic_id, sector in non_flaring_tic_id_and_sector_list:
+        tic_row = tess_data_interface.get_tess_input_catalog_row(tic_id)  # TODO: Don't repeat this call below.
+        luminosity__solar_units = tic_row['lum']
+        if np.isnan(luminosity__solar_units) or luminosity__solar_units == 0:
+            continue
+        non_flaring_tic_id_and_sector_list_with_luminosity.append((tic_id, sector))
+    non_flaring_tic_id_and_sector_list_limited = non_flaring_tic_id_and_sector_list_with_luminosity[:non_flaring_limit]
+    non_flaring_splits = split_tic_id_and_sector_list_equally(non_flaring_tic_id_and_sector_list_limited,
+                                                              number_of_splits=10)
     for split_index, tic_id_and_sector_split in enumerate(non_flaring_splits):
         for tic_id, sector in tic_id_and_sector_split:
             tic_row = tess_data_interface.get_tess_input_catalog_row(tic_id)
