@@ -96,3 +96,15 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
                     continue
             paths.append(fits_path)
         return paths
+
+    def load_auxiliary_information_for_path(self, path: Path) -> np.ndarray:
+        """
+        Loads auxiliary information information for the given path.
+
+        :param path: The path to the light curve file.
+        :return: The auxiliary information.
+        """
+        tic_id, sector = self.tess_data_interface.get_tic_id_and_sector_from_file_path(path)
+        metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
+        luminosity = metadata_row[MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS]
+        return np.array([luminosity], dtype=np.float32)
