@@ -82,10 +82,10 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
             tic_id, sector = self.tess_data_interface.get_tic_id_and_sector_from_file_path(fits_path)
             metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
             if is_flaring is not None:
-                slope_exists_for_row = metadata_row[
-                    MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].notna()
-                intercept_exists_for_row = metadata_row[
-                    MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].notna()
+                slope_exists_for_row = pd.notna(
+                    metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
+                intercept_exists_for_row = pd.notna(
+                    metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
                 assert slope_exists_for_row == intercept_exists_for_row
                 if is_flaring and not slope_exists_for_row:
                     continue
