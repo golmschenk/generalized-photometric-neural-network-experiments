@@ -8,8 +8,6 @@ from tensorflow.python.keras.metrics import MeanSquaredError, MeanMetricWrapper
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
 
-MeanSquaredError
-
 
 class FlareThresholdedCalculator:
     """
@@ -25,7 +23,7 @@ class FlareThresholdedCalculator:
                                                              precalculated_intercept_standard_deviation]],
                                                            dtype=tf.float32)
 
-    def __init__(self, slope_threshold: float = 0, intercept_threshold: float = 0):
+    def __init__(self, slope_threshold: float = -0.274, intercept_threshold: float = 8.39):
         self.slope_threshold = slope_threshold
         self.intercept_threshold = intercept_threshold
         self.threshold = tf.constant([[self.slope_threshold, self.intercept_threshold]], dtype=tf.float32)
@@ -40,7 +38,9 @@ class FlareThresholdedCalculator:
         """
         over_threshold_difference = backend.maximum(y_pred - self.threshold, tf.constant(0, dtype=tf.float32))
         threshold_condition = math_ops.is_nan(y_true)
-        absolute_difference = math_ops.abs(y_pred - y_true)
+        # Prevent the derivative from having a NaN by making sure all values used in the later `where` are safe.
+        safe_y_true = tf.where(threshold_condition, self.threshold, y_true)
+        absolute_difference = math_ops.abs(y_pred - safe_y_true)
         difference = tf.where(threshold_condition, over_threshold_difference, absolute_difference)
         return difference
 

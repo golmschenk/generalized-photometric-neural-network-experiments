@@ -1,6 +1,13 @@
 """
 Code to represent a collection of light curves.
 """
+import shutil
+
+import socket
+
+import re
+from filelock import FileLock
+
 from typing import Union, Iterable, Optional, List
 
 import numpy as np
@@ -32,6 +39,7 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
         :param path: The path to the light curve file.
         :return: The times and the fluxes of the light curve.
         """
+        path = self.move_path_to_nvme(path)
         fluxes, times = self.tess_data_interface.load_fluxes_and_times_from_fits_file(path)
         return times, fluxes
 
@@ -108,3 +116,20 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
         metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
         luminosity = metadata_row[MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS]
         return np.array([luminosity], dtype=np.float32)
+
+    def move_path_to_nvme(self, path: Path) -> Path:
+        match = re.match(r"gpu\d{3}", socket.gethostname())
+        if match is not None:
+            nvme_path = Path("/lscratch/golmsche").joinpath(path)
+            if not nvme_path.exists():
+                nvme_path.parent.mkdir(exist_ok=True, parents=True)
+                nvme_lock_path = nvme_path.parent.joinpath(nvme_path.name + '.lock')
+                lock = FileLock(str(nvme_lock_path))
+                with lock.acquire():
+                    if not nvme_path.exists():
+                        nvme_tmp_path = nvme_path.parent.joinpath(nvme_path.name + '.tmp')
+                        shutil.copy(path, nvme_tmp_path)
+                        nvme_tmp_path.rename(nvme_path)
+            return nvme_path
+        else:
+            return path
