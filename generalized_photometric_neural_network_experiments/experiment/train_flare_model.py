@@ -5,24 +5,27 @@ from generalized_photometric_neural_network_experiments.dataset.flare.metrics im
     FlareSquaredThresholdedDifferenceLoss, FlareThresholdedAbsoluteDifferenceMetric, \
     FlareSquaredThresholdedDifferenceMetric
 from ramjet.models.single_layer_model import SingleLayerModelWithAuxiliary
+from generalized_photometric_neural_network_experiments.dataset.flare.metrics import FlareThresholdedError, \
+    FlareThresholdedErrorMetric
+from ramjet.models.single_layer_model import SingleLayerModelWithAuxiliary, SingleLayerModelLinearWithAuxiliary
 
 sys.path.append('/att/gpfsfs/briskfs01/ppl/golmsche/ramjet')
 from ramjet.basic_models import SimpleLightCurveCnn, SanityCheckNetwork
 
-from ramjet.models.hades import Hades
+from ramjet.models.hades import Hades, HadesWithAuxiliaryNoSigmoid
 
 import tensorflow as tf
 from tensorflow.keras.losses import BinaryCrossentropy
 from pathlib import Path
 from generalized_photometric_neural_network_experiments.dataset.transit.database import TransitDatabase
-from ramjet.models.cura import Cura
+from ramjet.models.cura import Cura, CuraWithLateAuxiliary, CuraWithLateAuxiliaryNoSigmoid
 from ramjet.trial import create_logging_callbacks, create_logging_metrics
 
 
 def train():
     print('Starting training process...', flush=True)
     database = FlareDatabase()
-    model = SingleLayerModelWithAuxiliary()
+    model = SingleLayerModelWithAuxiliary(database.number_of_label_values)
     trial_name = f'{type(model).__name__}'
     epochs_to_run = 1000
     logs_directory = Path('logs')
