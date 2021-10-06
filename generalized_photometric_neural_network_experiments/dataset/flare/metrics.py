@@ -44,18 +44,31 @@ class FlareThresholdedCalculator:
         difference = tf.where(threshold_condition, over_threshold_difference, absolute_difference)
         return difference
 
-    def normalized_thresholded_absolute_difference(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    def scaled_thresholded_absolute_difference(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
         """
         Calculates the absolute difference with true NaN values being the difference above a given threshold
-        with the differences normalized by the precalculated means and standard deviations of the entire metadata set.
+        with the differences scaled by the precalculated standard deviations of the entire metadata set.
 
         :param y_true: The true values, with NaNs being calculated based on the difference above a threshold.
         :param y_pred: The predicted values.
         :return: The differences.
         """
         difference = self.thresholded_absolute_difference(y_true, y_pred)
-        normalized_difference = self.normalize_based_on_precalculated_flare_metadata(difference)
-        return normalized_difference
+        scaled_difference = self.scale_based_on_precalculated_flare_metadata(difference)
+        return scaled_difference
+
+    def squared_scaled_thresholded_difference(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        """
+        Calculates the squared difference with true NaN values being the difference above a given threshold
+        with the differences scaled by the precalculated standard deviations of the entire metadata set.
+
+        :param y_true: The true values, with NaNs being calculated based on the difference above a threshold.
+        :param y_pred: The predicted values.
+        :return: The differences.
+        """
+        scaled_difference = self.scaled_thresholded_absolute_difference(y_true, y_pred)
+        squared_scaled_difference = tf.math.square(scaled_difference)
+        return squared_scaled_difference
 
     @staticmethod
     def normalize_based_on_true(y_true: tf.Tensor, values_to_normalize: tf.Tensor) -> tf.Tensor:
@@ -78,12 +91,24 @@ class FlareThresholdedCalculator:
                              [[true_slope_standard_deviation, true_intercept_standard_deviation]])
         return normalized_values
 
+    def scale_based_on_precalculated_flare_metadata(self, unscaled_values: tf.Tensor) -> tf.Tensor:
+        """
+        Scale the given set of slope and intercept values based on the precalculated standard deviations
+        of the entire metadata set. Does not offset by the mean, and is expected to be used with values where
+        the offset does not matter (i.e., differences between true and predicted values).
+
+        :param unscaled_values: The values to scale.
+        :return: The scaled values.
+        """
+        scaled_values = unscaled_values / self.precalculated_standard_deviations_tensor
+        return scaled_values
+
     def normalize_based_on_precalculated_flare_metadata(self, unnormalized_values: tf.Tensor) -> tf.Tensor:
         """
         Normalize the given set of slope and intercept values based on the precalculated means and standard deviations
         of the entire metadata set.
 
-        :param unnormalized_values: The values to normalized.
+        :param unnormalized_values: The values to normalize.
         :return: The normalized values.
         """
         normalized_values = (unnormalized_values - self.precalculated_means_tensor
@@ -95,7 +120,7 @@ class FlareThresholdedCalculator:
         Unnormalize the given set of normalized slope and intercept values based on the precalculated means and standard
         deviations of the entire metadata set.
 
-        :param normalized_values: The values to unnormalized.
+        :param normalized_values: The values to unnormalize.
         :return: The unnormalized values.
         """
         unnormalized_values = (normalized_values * self.precalculated_standard_deviations_tensor
@@ -103,13 +128,20 @@ class FlareThresholdedCalculator:
         return unnormalized_values
 
 
-class FlareThresholdedError(LossFunctionWrapper):
-    def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='flare_thresholded_error'):
+class FlareSquaredThresholdedDifferenceLoss(LossFunctionWrapper):
+    def __init__(self, reduction=losses_utils.ReductionV2.AUTO,
+                 name='flare_squared_thresholded_difference_loss'):
         calculator = FlareThresholdedCalculator()
-        super().__init__(calculator.normalized_thresholded_absolute_difference, name=name, reduction=reduction)
+        super().__init__(calculator.squared_scaled_thresholded_difference, name=name, reduction=reduction)
 
 
-class FlareThresholdedErrorMetric(MeanMetricWrapper):
-    def __init__(self, name='flare_thresholded_error_metric', dtype=None):
+class FlareThresholdedAbsoluteDifferenceMetric(MeanMetricWrapper):
+    def __init__(self, name='flare_thresholded_absolute_difference_metric', dtype=None):
         calculator = FlareThresholdedCalculator()
-        super().__init__(calculator.normalized_thresholded_absolute_difference, name=name, dtype=dtype)
+        super().__init__(calculator.scaled_thresholded_absolute_difference, name=name, dtype=dtype)
+
+
+class FlareSquaredThresholdedDifferenceMetric(MeanMetricWrapper):
+    def __init__(self, name='flare_squared_thresholded_difference_metric', dtype=None):
+        calculator = FlareThresholdedCalculator()
+        super().__init__(calculator.squared_scaled_thresholded_difference, name=name, dtype=dtype)

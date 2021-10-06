@@ -1,15 +1,15 @@
 import sys
 
 from generalized_photometric_neural_network_experiments.dataset.flare.database import FlareDatabase
-from generalized_photometric_neural_network_experiments.dataset.flare.metrics import FlareThresholdedError, \
-    FlareThresholdedErrorMetric
+from generalized_photometric_neural_network_experiments.dataset.flare.metrics import \
+    FlareSquaredThresholdedDifferenceLoss, FlareThresholdedAbsoluteDifferenceMetric, \
+    FlareSquaredThresholdedDifferenceMetric
 from ramjet.models.single_layer_model import SingleLayerModelWithAuxiliary
 
 sys.path.append('/att/gpfsfs/briskfs01/ppl/golmsche/ramjet')
 from ramjet.basic_models import SimpleLightCurveCnn, SanityCheckNetwork
 
 from ramjet.models.hades import Hades
-
 
 import tensorflow as tf
 from tensorflow.keras.losses import BinaryCrossentropy
@@ -29,8 +29,8 @@ def train():
     logging_callbacks = create_logging_callbacks(logs_directory, trial_name, database,
                                                  wandb_entity='ramjet', wandb_project='flare')
     training_dataset, validation_dataset = database.generate_datasets()
-    loss_metric = FlareThresholdedError(name='loss')
-    metrics = [FlareThresholdedErrorMetric(name='flare_thresholded_error_metric')]
+    loss_metric = FlareSquaredThresholdedDifferenceLoss(name='loss')
+    metrics = [FlareThresholdedAbsoluteDifferenceMetric(), FlareSquaredThresholdedDifferenceMetric()]
     optimizer = tf.optimizers.Adam()
     model.compile(optimizer=optimizer, loss=loss_metric, metrics=metrics)
     model.fit(training_dataset, epochs=epochs_to_run, validation_data=validation_dataset, callbacks=logging_callbacks,
