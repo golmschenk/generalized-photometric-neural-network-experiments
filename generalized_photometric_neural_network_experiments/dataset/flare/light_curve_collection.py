@@ -31,6 +31,7 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
         self.metadata_data_frame = pd.read_csv(metadata_csv_path)
         self.is_flaring: Optional[bool] = is_flaring
         self.splits: Optional[List[int]] = splits
+        self._paths: Optional[List[Path]] = None
 
     def load_times_and_fluxes_from_path(self, path: Path) -> (np.ndarray, np.ndarray):
         """
@@ -76,7 +77,7 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
 
         :return: An iterable of the light curve paths.
         """
-        return self.get_paths_for_label_existence_and_splits(self.is_flaring, self.splits)
+        return list(self.get_paths_for_label_existence_and_splits(self.is_flaring, self.splits))
 
     def get_paths_for_label_existence_and_splits(self, is_flaring: Optional[bool] = None,
                                                  splits: Optional[List[int]] = None) -> Iterable[Path]:
@@ -85,25 +86,27 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
 
         :return: An iterable of the light curve paths.
         """
-        paths = []
-        for fits_path in light_curve_directory.glob('*.fits'):
-            tic_id, sector = self.tess_data_interface.get_tic_id_and_sector_from_file_path(fits_path)
-            metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
-            if is_flaring is not None:
-                slope_exists_for_row = pd.notna(
-                    metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
-                intercept_exists_for_row = pd.notna(
-                    metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
-                assert slope_exists_for_row == intercept_exists_for_row
-                if is_flaring and not slope_exists_for_row:
-                    continue
-                if not is_flaring and slope_exists_for_row:
-                    continue
-            if splits is not None:
-                if metadata_row[MetadataColumnName.SPLIT] not in splits:
-                    continue
-            paths.append(fits_path)
-        return paths
+        if self._paths is None:
+            paths = []
+            for fits_path in light_curve_directory.glob('*.fits'):
+                tic_id, sector = self.tess_data_interface.get_tic_id_and_sector_from_file_path(fits_path)
+                metadata_row = self.get_metadata_row_for_tic_id_and_sector(tic_id, sector)
+                if is_flaring is not None:
+                    slope_exists_for_row = pd.notna(
+                        metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE])
+                    intercept_exists_for_row = pd.notna(
+                        metadata_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT])
+                    assert slope_exists_for_row == intercept_exists_for_row
+                    if is_flaring and not slope_exists_for_row:
+                        continue
+                    if not is_flaring and slope_exists_for_row:
+                        continue
+                if splits is not None:
+                    if metadata_row[MetadataColumnName.SPLIT] not in splits:
+                        continue
+                paths.append(fits_path)
+            self._paths = paths
+        return self._paths
 
     def load_auxiliary_information_for_path(self, path: Path) -> np.ndarray:
         """

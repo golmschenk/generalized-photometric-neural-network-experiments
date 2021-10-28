@@ -10,11 +10,11 @@ class FlareDatabase(StandardAndInjectedLightCurveDatabase):
         self.number_of_label_values = 2
         self.training_standard_light_curve_collections = [
             FlareExperimentLightCurveCollection(is_flaring=True, splits=list(range(8))),
-            FlareExperimentLightCurveCollection(is_flaring=False, splits=list(range(8))),
+            # FlareExperimentLightCurveCollection(is_flaring=False, splits=list(range(8))),
         ]
         self.validation_standard_light_curve_collections = [
-            FlareExperimentLightCurveCollection(splits=[8]),
+            FlareExperimentLightCurveCollection(is_flaring=True, splits=[8]),
         ]
         self.inference_light_curve_collections = [
-            FlareExperimentLightCurveCollection(splits=[9]),
+            FlareExperimentLightCurveCollection(is_flaring=True, splits=[9]),
         ]
