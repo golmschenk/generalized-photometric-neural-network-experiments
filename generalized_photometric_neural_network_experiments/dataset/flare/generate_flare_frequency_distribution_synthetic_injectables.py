@@ -150,5 +150,41 @@ def plot_synthetic_flare_equivalent_distribution_histogram():
     show(Row(linear_figure, log_figure))
 
 
+def plot_gunther_flare_amplitude_and_duration_kde_with_resample():
+    gunther_flare_data_frame = download_maximilian_gunther_flare_data_frame()
+    log_amplitude_column = np.log10(gunther_flare_data_frame['Amp'])
+    log_full_width_at_half_maximum_column = np.log10(gunther_flare_data_frame['FWHM'])
+    kernel = scipy.stats.gaussian_kde(np.stack([log_amplitude_column.values,
+                                                log_full_width_at_half_maximum_column.values], axis=0))
+    minimum_amplitude = log_amplitude_column.min()
+    maximum_amplitude = log_amplitude_column.max()
+    minimum_full_width_at_half_maximum = log_full_width_at_half_maximum_column.min()
+    maximum_full_width_at_half_maximum = log_full_width_at_half_maximum_column.max()
+    image_size = 500
+    y_step_size = (maximum_amplitude - minimum_amplitude) / image_size
+    x_step_size = (maximum_full_width_at_half_maximum - minimum_full_width_at_half_maximum) / image_size
+    epsilon = 1e-6
+    xy = np.mgrid[minimum_amplitude:maximum_amplitude-epsilon:y_step_size,
+                  minimum_full_width_at_half_maximum: maximum_full_width_at_half_maximum - epsilon:x_step_size,
+                  ].reshape(2, -1)
+    densities = kernel(xy)
+    density_map = densities.reshape(image_size, image_size)
+    figure = Figure(tooltips=[("x", "$x"), ("y", "$y"), ("value", "@image")])
+    figure.x_range.range_padding = figure.y_range.range_padding = 0
+    figure.image(image=[density_map],
+                 x=minimum_full_width_at_half_maximum,
+                 y=minimum_amplitude,
+                 dw=maximum_full_width_at_half_maximum - minimum_full_width_at_half_maximum,
+                 dh=maximum_amplitude - minimum_amplitude,
+                 palette=Blues[9][::-1], level="image")
+    figure.grid.grid_line_width = 0.5
+    figure.circle(x=log_full_width_at_half_maximum_column, y=log_amplitude_column, color=Category10[10][1],
+                  alpha=0.7, size=1)
+    resample = kernel.resample(9000)
+    figure.circle(x=resample[1, :], y=resample[0, :], color=Category10[10][2],
+                  alpha=0.7, size=1)
+    show(figure)
+
+
 if __name__ == '__main__':
     plot_synthetic_flare_equivalent_distribution_histogram()
