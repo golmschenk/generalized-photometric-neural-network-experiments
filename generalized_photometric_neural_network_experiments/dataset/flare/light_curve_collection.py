@@ -136,3 +136,27 @@ class FlareExperimentLightCurveCollection(LightCurveCollection):
             return nvme_path
         else:
             return path
+
+
+class FlareExperimentUpsideDownLightCurveCollection(FlareExperimentLightCurveCollection):
+    def load_times_and_fluxes_from_path(self, path: Path) -> (np.ndarray, np.ndarray):
+        """
+        Loads the times and fluxes from a given light curve path.
+
+        :param path: The path to the light curve file.
+        :return: The times and the fluxes of the light curve.
+        """
+        path = self.move_path_to_nvme(path)
+        fluxes, times = self.tess_data_interface.load_fluxes_and_times_from_fits_file(path)
+        negative_fluxes = -fluxes
+        negative_offset_fluxes = negative_fluxes - np.min(negative_fluxes)
+        return times, negative_offset_fluxes
+
+    def load_label_from_path(self, path: Path) -> Union[np.ndarray]:
+        """
+        Loads the label of an example from a corresponding path.
+
+        :param path: The path to load the label for.
+        :return: The label.
+        """
+        return np.array([np.nan, np.nan], dtype=np.float32)

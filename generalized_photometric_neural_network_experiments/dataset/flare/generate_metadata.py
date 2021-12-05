@@ -9,8 +9,10 @@ import requests
 from astropy.io import ascii
 from bs4 import BeautifulSoup
 
-from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, MetadataColumnName
-from generalized_photometric_neural_network_experiments.dataset.transit.generate_metadata import split_tic_id_and_sector_list_equally
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import metadata_csv_path, \
+    MetadataColumnName
+from generalized_photometric_neural_network_experiments.dataset.transit.generate_metadata import \
+    split_tic_id_and_sector_list_equally
 from ramjet.data_interface.tess_data_interface import TessDataInterface, ColumnName as TessColumnName
 
 
@@ -22,7 +24,7 @@ def download_maximilian_gunther_metadata_data_frame() -> pd.DataFrame:
     :return: The data frame of the TIC IDs and flare statistics.
     """
     request_headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
-                                     '(KHTML, like Gecko) Version/14.1.2 Safari/605.1.15'}  # Prevent bot blocking.
+                                     '(KHTML, like Gecko) Version/15.1 Safari/605.1.15'}  # Prevent bot blocking.
     paper_page_response = requests.get('https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a',
                                        headers=request_headers)
     paper_page_soup = BeautifulSoup(paper_page_response.content, 'html.parser')
@@ -46,17 +48,23 @@ def download_maximilian_gunther_metadata_data_frame() -> pd.DataFrame:
     return metadata_data_frame
 
 
-def download_tess_sector_one_to_three_non_flaring_metadata_data_frame(flaring_metadata_data_frame: pd.DataFrame
-                                                                      ) -> pd.DataFrame:
+def download_data_frame_of_tess_non_flaring_metadata_from_sectors_with_flaring_metadata(
+        flaring_metadata_data_frame: pd.DataFrame) -> pd.DataFrame:
     """
     Given the metadata data frame of the flaring targets, gets the non-flaring targets in the 2-minute cadence
-    TESS data for sectors 1-3.
+    TESS data for corresponding sectors.
 
     :param flaring_metadata_data_frame: The flaring target metadata.
     :return: The non-flaring target metadata.
     """
-    all_observations = TessDataInterface().get_all_two_minute_single_sector_observations()
-    sector_one_to_three_observations = all_observations[all_observations['Sector'] <= 3]
+    tess_data_interface = TessDataInterface()
+    all_observations = tess_data_interface.get_all_two_minute_single_sector_observations()
+    flaring_sectors = []
+    for index, row in flaring_metadata_data_frame.iterrows():
+        target_sectors = tess_data_interface.get_sectors_target_appears_in(int(row[MetadataColumnName.TIC_ID]))
+        flaring_sectors.extend(target_sectors)
+    flaring_sectors = [sector for sector in set(flaring_sectors) if sector <= 26]
+    sector_one_to_three_observations = all_observations[all_observations['Sector'].isin(flaring_sectors)]
     non_flaring_observations = sector_one_to_three_observations[
         ~sector_one_to_three_observations[TessColumnName.TIC_ID].isin(
             flaring_metadata_data_frame[MetadataColumnName.TIC_ID])]
@@ -74,20 +82,29 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
     Downloads the metadata for the flare application to a CSV.
     """
     flaring_target_metadata_data_frame = download_maximilian_gunther_metadata_data_frame()
-    non_flaring_target_metadata_data_frame = download_tess_sector_one_to_three_non_flaring_metadata_data_frame(
-        flaring_target_metadata_data_frame)
+    non_flaring_target_metadata_data_frame = \
+        download_data_frame_of_tess_non_flaring_metadata_from_sectors_with_flaring_metadata(
+            flaring_target_metadata_data_frame)
     tess_data_interface = TessDataInterface()
+    flaring_sectors = []
+    for index, row in flaring_target_metadata_data_frame.iterrows():
+        target_sectors = tess_data_interface.get_sectors_target_appears_in(int(row[MetadataColumnName.TIC_ID]))
+        flaring_sectors.extend(target_sectors)
+    flaring_sectors = [sector for sector in set(flaring_sectors) if sector <= 26]
     labeled_tuple_list: List[Tuple[int, int, float, float, float, int]] = []
     flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
     for tic_id in flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values:
         sectors = tess_data_interface.get_sectors_target_appears_in(tic_id)
         for sector in sectors:
-            if sector <= 3:
+            if sector in flaring_sectors:
                 tic_row = tess_data_interface.get_tess_input_catalog_row(tic_id)  # TODO: Don't repeat this call below.
                 luminosity__solar_units = tic_row['lum']
                 if np.isnan(luminosity__solar_units) or luminosity__solar_units == 0:
                     continue
                 flaring_tic_id_and_sector_list.append((tic_id, sector))
+    random = Random()
+    random.seed(0)
+    random.shuffle(flaring_tic_id_and_sector_list)
     flaring_splits = split_tic_id_and_sector_list_equally(flaring_tic_id_and_sector_list, number_of_splits=10)
     for split_index, tic_id_and_sector_split in enumerate(flaring_splits):
         for tic_id, sector in tic_id_and_sector_split:
@@ -106,13 +123,13 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
                  split_index)
             )
     non_flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
-    for tic_id in non_flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values:
+    non_flaring_tic_ids = non_flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values
+    random.shuffle(non_flaring_tic_ids)
+    for tic_id in non_flaring_tic_ids[:non_flaring_limit]:
         sectors = tess_data_interface.get_sectors_target_appears_in(tic_id)
         for sector in sectors:
-            if sector <= 3:
+            if sector in flaring_sectors:
                 non_flaring_tic_id_and_sector_list.append((tic_id, sector))
-    random = Random()
-    random.seed(0)
     random.shuffle(non_flaring_tic_id_and_sector_list)
     non_flaring_tic_id_and_sector_list_with_luminosity: List[Tuple[int, int]] = []
     for tic_id, sector in non_flaring_tic_id_and_sector_list:

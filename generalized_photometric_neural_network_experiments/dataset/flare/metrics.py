@@ -1,10 +1,10 @@
 """
 Code for calculating the metrics for the flare experiment using thresholded differences for unknown values.
 """
-from tensorflow.python.keras import backend
 import tensorflow as tf
+from tensorflow.keras.losses import Loss
+from tensorflow.keras.metrics import MeanMetricWrapper
 from tensorflow.python.keras.losses import LossFunctionWrapper
-from tensorflow.python.keras.metrics import MeanSquaredError, MeanMetricWrapper
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
 
@@ -37,7 +37,7 @@ class FlareThresholdedCalculator:
         :param y_pred: The predicted values.
         :return: The differences.
         """
-        over_threshold_difference = backend.maximum(y_pred - self.threshold, tf.constant(0, dtype=tf.float32))
+        over_threshold_difference = math_ops.maximum(y_pred - self.threshold, tf.constant(0, dtype=tf.float32))
         threshold_condition = math_ops.is_nan(y_true)
         # Prevent the derivative from having a NaN by making sure all values used in the later `where` are safe.
         safe_y_true = tf.where(threshold_condition, self.threshold, y_true)
@@ -190,11 +190,31 @@ class FlareThresholdedCalculator:
         return intercept_mean_difference
 
 
+class FlareScaledAbsoluteDifferenceLoss(Loss):
+    def __init__(self, name='flare_scaled_absolute_difference_loss', *args, **kwargs):
+        self.calculator = FlareThresholdedCalculator()
+        super().__init__(name=name, *args, **kwargs)
+
+    def call(self, y_true, y_pred):
+        absolute_difference = math_ops.abs(y_pred - y_true)
+        scaled_difference = self.calculator.scale_based_on_precalculated_flare_metadata(absolute_difference)
+        return tf.reduce_mean(scaled_difference, axis=-1)
+
+
 class FlareSquaredThresholdedDifferenceLoss(LossFunctionWrapper):
     def __init__(self, reduction=losses_utils.ReductionV2.AUTO,
                  name='flare_squared_thresholded_difference_loss'):
         calculator = FlareThresholdedCalculator()
         super().__init__(calculator.squared_scaled_thresholded_difference, name=name, reduction=reduction)
+
+
+class FlareSquaredThresholdedDifferenceLoss_(Loss):
+    def __init__(self, name='flare_squared_thresholded_difference_loss', *args, **kwargs):
+        self.calculator = FlareThresholdedCalculator()
+        super().__init__(name=name, *args, **kwargs)
+
+    def call(self, y_true, y_pred, sample_weight=None):
+        return self.calculator.squared_scaled_thresholded_difference(y_true, y_pred)
 
 
 class FlareThresholdedAbsoluteDifferenceMetric(MeanMetricWrapper):
@@ -209,11 +229,13 @@ class FlareSquaredThresholdedDifferenceMetric(MeanMetricWrapper):
         super().__init__(calculator.squared_scaled_thresholded_difference, name=name, dtype=dtype)
 
 
-class FrequenciesSquaredThresholdedDifferenceLoss(LossFunctionWrapper):
-    def __init__(self, reduction=losses_utils.ReductionV2.AUTO,
-                 name='frequencies_squared_thresholded_difference_loss'):
-        calculator = FlareThresholdedCalculator(value0_threshold=-0.485, value1_threshold=-9.351)
-        super().__init__(calculator.frequencies_squared_thresholded_difference, name=name, reduction=reduction)
+class FrequenciesSquaredThresholdedDifferenceLoss(Loss):
+    def __init__(self, name='frequencies_squared_thresholded_difference_loss', *args, **kwargs):
+        self.calculator = FlareThresholdedCalculator(value0_threshold=-0.485, value1_threshold=-9.351)
+        super().__init__(name=name, *args, **kwargs)
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        return self.calculator.frequencies_squared_thresholded_difference(y_true, y_pred)
 
 
 class FrequenciesThresholdedAbsoluteDifferenceMetric(MeanMetricWrapper):

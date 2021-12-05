@@ -1,7 +1,8 @@
 import numpy as np
 from backports.strenum import StrEnum
+from bokeh.colors import Color
 from bokeh.io import show
-from bokeh.models import Row
+from bokeh.models import Row, ColumnDataSource
 from bokeh.palettes import Category10
 from bokeh.plotting import Figure
 from pathlib import Path
@@ -71,7 +72,7 @@ def gather_results_in_single_data_frame():
     return dataframe
 
 
-def plot_analysis(data_frame: pd.DataFrame):
+def plot_analysis(full_data_frame: pd.DataFrame):
     palette = Category10[10]
     flaring_data_frame = full_data_frame[full_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].notna()]
     non_flaring_data_frame = full_data_frame[
@@ -98,7 +99,7 @@ def plot_analysis(data_frame: pd.DataFrame):
 
 
 def create_light_curve_figure(fluxes0, times0, name0, title, x_axis_label='Time (BTJD)',
-                                  y_axis_label='Relative flux') -> Figure:
+                              y_axis_label='Relative flux') -> Figure:
     figure = Figure(title=title, x_axis_label=x_axis_label, y_axis_label=y_axis_label, active_drag='box_zoom')
 
     def add_light_curve(times, fluxes, legend_label, color):
@@ -115,34 +116,53 @@ def create_light_curve_figure(fluxes0, times0, name0, title, x_axis_label='Time 
     return figure
 
 
+def add_infer_results_to_figure(infer_path: Path, slope_figure: Figure, intercept_figure: Figure, color: Color) -> None:
+    dataframe = FlareExperimentLightCurveCollection().metadata_data_frame
+    tess_data_interface = TessDataInterface()
+    infer_data_frame = pd.read_csv(infer_path)
+    infer_data_frame.rename(
+        columns={'label_0_confidence': f'predicted_slope',
+                 'label_1_confidence': f'predicted_intercept'},
+        inplace=True)
+    lambdafunc = lambda x: pd.Series(
+        tess_data_interface.get_tic_id_and_sector_from_file_path(x['light_curve_path']))
+    infer_data_frame[[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR]] = infer_data_frame.apply(
+        lambdafunc, axis=1)
+    dataframe = dataframe.merge(infer_data_frame, how='inner',
+                                on=[MetadataColumnName.TIC_ID, MetadataColumnName.SECTOR])
+    column_data_source = ColumnDataSource(data=dataframe)
+    true_slope_minimum = dataframe[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].min()
+    true_slope_maximum = dataframe[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].max()
+    from sklearn.metrics import r2_score
+    slope_coefficient_of_determination = r2_score(dataframe[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
+                                                  dataframe[f'predicted_slope'])
+    slope_figure.circle(source=column_data_source, x=MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE,
+                        y=f'predicted_slope', color=color)
+    slope_figure.line(x=[true_slope_minimum, true_slope_maximum], y=[true_slope_minimum, true_slope_maximum],
+                      color='black')
+    true_intercept_minimum = dataframe[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].min()
+    true_intercept_maximum = dataframe[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT].max()
+    intercept_coefficient_of_determination = r2_score(
+        dataframe[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
+        dataframe[f'predicted_intercept'])
+    intercept_figure.circle(source=column_data_source, x=MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT,
+                            y=f'predicted_intercept', color=color)
+    intercept_figure.line(x=[true_intercept_minimum, true_intercept_maximum],
+                          y=[true_intercept_minimum, true_intercept_maximum],
+                          color='black')
+
+
 if __name__ == '__main__':
-    # full_data_frame = gather_results_in_single_data_frame()
-    # full_data_frame.to_csv(infer_full_path)
-    full_data_frame = pd.read_csv(infer_full_path)
-    # plot_analysis(full_data_frame)
-    collection = FlareExperimentLightCurveCollection()
-    flaring_data_frame = full_data_frame[full_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].notna()]
-    flaring_data_frame = flaring_data_frame.sort_values(MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT, ascending=False)
-    for index in range(flaring_data_frame.shape[0]):
-        most_row = flaring_data_frame.iloc[index]
-        most_path = most_row['light_curve_path_x']
-        times, fluxes = collection.load_times_and_fluxes_from_path(most_path)
-        title = f'{most_path}\nLum:{most_row[MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS]}\nInt:{most_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]}'
-        most_figure = create_light_curve_figure(fluxes, times, '', title)
-        least_row = flaring_data_frame.iloc[(-1) - index]
-        least_path = least_row['light_curve_path_x']
-        times, fluxes = collection.load_times_and_fluxes_from_path(least_path)
-        title = f'{least_path}\nLum:{least_row[MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS]}\nInt:{least_row[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]}'
-        least_figure = create_light_curve_figure(fluxes, times, '', title)
-        show(Row(most_figure, least_figure))
-        pass
-    # flaring_data_frame = full_data_frame[full_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].notna()]
-    # non_flaring_data_frame = full_data_frame[full_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE].isna()]
-    # print(flaring_data_frame[FullDataColumnName.TEST_SLOPE_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(non_flaring_data_frame[FullDataColumnName.TEST_SLOPE_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(flaring_data_frame[FullDataColumnName.TEST_INTERCEPT_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(non_flaring_data_frame[FullDataColumnName.TEST_INTERCEPT_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(full_data_frame[FullDataColumnName.TRAIN_SLOPE_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(full_data_frame[FullDataColumnName.TEST_SLOPE_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(full_data_frame[FullDataColumnName.TRAIN_INTERCEPT_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
-    # print(full_data_frame[FullDataColumnName.TEST_INTERCEPT_SQUARED_SCALED_THRESHOLDED_DIFFERENCE].mean())
+    slope_title = f'Slope'
+    # slope_title += f' (R^2={slope_coefficient_of_determination})'
+    slope_figure_ = Figure(match_aspect=True, title=slope_title,
+                           x_axis_label='True', y_axis_label='Predicted')
+    intercept_title = f'Intercept'
+    # intercept_title += ' (R^2={intercept_coefficient_of_determination})'
+    intercept_figure_ = Figure(match_aspect=True, title=intercept_title,
+                               x_axis_label='True', y_axis_label='Predicted')
+    infer_path_ = Path('logs/HadesWithFlareInterceptLuminosityAddedNoSigmoid_luminosity_as_linear_2021_10_30_11_51_40/infer_results_2021-11-07-18-46-54.csv')
+    add_infer_results_to_figure(infer_path_, slope_figure_, intercept_figure_, color=Category10[9][0])
+    infer_path_ = Path('logs/HadesWithFlareInterceptLuminosityAddedNoSigmoid_plain_2021_11_11_14_29_11/infer_results_2021-11-15-10-06-54.csv')
+    add_infer_results_to_figure(infer_path_, slope_figure_, intercept_figure_, color=Category10[9][1])
+    show(Row(slope_figure_, intercept_figure_))

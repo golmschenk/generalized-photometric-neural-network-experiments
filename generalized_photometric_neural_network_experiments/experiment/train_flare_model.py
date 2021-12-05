@@ -1,5 +1,6 @@
 from generalized_photometric_neural_network_experiments.experiment.flare.models import \
-    HadesWithFlareInterceptLuminosityAddedNoSigmoid
+    HadesWithFlareInterceptLuminosityAddedNoSigmoid, CuraWithFlareInterceptLuminosityAddedNoSigmoid, FlareNet, \
+    MiniFlareNet, MicroFlareNet
 
 print('Starting imports...', flush=True)
 import sys
@@ -11,7 +12,8 @@ from generalized_photometric_neural_network_experiments.dataset.flare.metrics im
     FrequenciesThresholdedAbsoluteDifferenceMetric, FrequenciesSquaredThresholdedDifferenceMetric, \
     SquaredScaledSlopeDifferenceForKnownFlaringMetricForFrequencies, \
     SquaredScaledInterceptDifferenceForKnownFlaringMetricForFrequencies, \
-    SquaredScaledInterceptDifferenceForKnownFlaringMetric, SquaredScaledSlopeDifferenceForKnownFlaringMetric
+    SquaredScaledInterceptDifferenceForKnownFlaringMetric, SquaredScaledSlopeDifferenceForKnownFlaringMetric, \
+    FlareScaledAbsoluteDifferenceLoss
 from ramjet.models.single_layer_model import SingleLayerModelLinearWithAuxiliary
 
 sys.path.append('/att/gpfsfs/briskfs01/ppl/golmsche/ramjet')
@@ -30,12 +32,13 @@ from ramjet.trial import create_logging_callbacks, create_logging_metrics
 def train():
     print('Starting training process...', flush=True)
     database = FlareDatabase()
-    model = HadesWithFlareInterceptLuminosityAddedNoSigmoid(database.number_of_label_values)
-    trial_name = f'{type(model).__name__}_luminosity_as_linear'
+    model = MicroFlareNet(database.number_of_label_values)
+    trial_name = f'{type(model).__name__}_no_do_no_bn'
     epochs_to_run = 1000
     logs_directory = Path('logs')
     logging_callbacks = create_logging_callbacks(logs_directory, trial_name, database,
-                                                 wandb_entity='ramjet', wandb_project='flare')
+                                                 wandb_entity='ramjet', wandb_project='flare',
+                                                 light_curve_logging=True)
     training_dataset, validation_dataset = database.generate_datasets()
     loss_metric = FlareSquaredThresholdedDifferenceLoss(name='loss')
     metrics = [FlareThresholdedAbsoluteDifferenceMetric(), FlareSquaredThresholdedDifferenceMetric(),
