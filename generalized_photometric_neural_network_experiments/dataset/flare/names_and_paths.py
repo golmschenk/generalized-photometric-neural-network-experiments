@@ -23,5 +23,7 @@ class MetadataColumnName(StrEnum):
     SECTOR = 'sector'
     FLARE_FREQUENCY_DISTRIBUTION_SLOPE = 'flare_frequency_distribution_slope'
     FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT = 'flare_frequency_distribution_intercept'
+    EQUIVALENT_DURATION_FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT = \
+        'equivalent_duration_flare_frequency_distribution_intercept'
     LUMINOSITY__LOG_10_SOLAR_UNITS = 'luminosity__log_10_solar_units'
     SPLIT = 'split'
