@@ -205,5 +205,22 @@ def plot_metadata_flare_frequency_distributions_in_equivalent_duration():
     show(figure)
 
 
+def sample_ffd_counts_for_log_energy_range(ffd_slope: float, ffd_intercept: float, time_interval: float,
+                                           range_start: float, range_end: float, number_of_bins: int) -> np.ndarray:
+    log_energy_bin_edges = np.linspace(range_start, range_end, num=number_of_bins + 1)
+    return sample_ffd_counts_for_log_energy_bins(log_energy_bin_edges, ffd_intercept, ffd_slope, time_interval)
+
+
+def sample_ffd_counts_for_log_energy_bins(log_energy_bin_edges, ffd_intercept, ffd_slope, time_interval):
+    log_energy_bin_midpoints = (log_energy_bin_edges[1:] + log_energy_bin_edges[:-1]) / 2
+    bin_log_frequencies = (log_energy_bin_midpoints * ffd_slope) + ffd_intercept
+    bin_frequencies = 10 ** bin_log_frequencies
+    bin_size = (np.max(log_energy_bin_edges) - np.min(log_energy_bin_edges)) / log_energy_bin_midpoints.shape[0]
+    bin_sampled_counts = np.random.poisson(lam=bin_frequencies * time_interval * bin_size)
+    return bin_sampled_counts
+
+
 if __name__ == '__main__':
-    generate_flare_time_comparison()
+    x = sample_ffd_counts_for_log_energy_range(ffd_slope=-0.506, ffd_intercept=15.961, time_interval=60,
+                                               range_start=30, range_end=36, number_of_bins=50)
+    pass
