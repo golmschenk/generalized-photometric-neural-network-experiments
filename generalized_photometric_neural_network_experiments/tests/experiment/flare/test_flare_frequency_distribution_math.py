@@ -86,11 +86,11 @@ def test_convert_log_flare_frequency_distribution_from_absolute_to_equivalent_du
 
 def test_convert_equivalent_duration_to_ergs():
     equivalent_duration0__days = 1
-    energy__ergs0 = convert_equivalent_duration_in_days_to_ergs(equivalent_duration__days=equivalent_duration0__days)
-    assert energy__ergs0 == pytest.approx(3.305664e38)
+    energy0__ergs = convert_equivalent_duration_in_days_to_ergs(equivalent_duration__days=equivalent_duration0__days)
+    assert energy0__ergs == pytest.approx(3.305664e38)
     equivalent_duration1__days = 0.1
     star_luminosity1__solar_units = 0.5
-    energy__ergs1 = convert_equivalent_duration_in_days_to_ergs(
+    energy1__ergs = convert_equivalent_duration_in_days_to_ergs(
         equivalent_duration__days=equivalent_duration1__days,
         star_luminosity__solar_units=star_luminosity1__solar_units)
-    assert energy__ergs1 == pytest.approx(1.652832e37)
+    assert energy1__ergs == pytest.approx(1.652832e37)
