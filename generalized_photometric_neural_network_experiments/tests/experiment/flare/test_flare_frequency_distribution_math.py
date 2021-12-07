@@ -1,6 +1,9 @@
+import pytest
+
 from generalized_photometric_neural_network_experiments.dataset.flare.flare_frequency_distribution_math import \
     convert_flare_frequency_distribution_from_equivalent_duration_to_absolute, \
-    convert_flare_frequency_distribution_from_absolute_to_equivalent_duration
+    convert_flare_frequency_distribution_from_absolute_to_equivalent_duration, \
+    convert_equivalent_duration_in_days_to_ergs
 
 
 def test_convert_log_flare_frequency_distribution_from_equivalent_duration_to_absolute():
@@ -79,3 +82,15 @@ def test_convert_log_flare_frequency_distribution_from_absolute_to_equivalent_du
                                                                                   log_luminosity=input_log_luminosity3))
     assert output_slope3 == -3
     assert output_intercept3 == 2
+
+
+def test_convert_equivalent_duration_to_ergs():
+    equivalent_duration0__days = 1
+    energy__ergs0 = convert_equivalent_duration_in_days_to_ergs(equivalent_duration__days=equivalent_duration0__days)
+    assert energy__ergs0 == pytest.approx(3.305664e38)
+    equivalent_duration1__days = 0.1
+    star_luminosity1__solar_units = 0.5
+    energy__ergs1 = convert_equivalent_duration_in_days_to_ergs(
+        equivalent_duration__days=equivalent_duration1__days,
+        star_luminosity__solar_units=star_luminosity1__solar_units)
+    assert energy__ergs1 == pytest.approx(1.652832e37)
