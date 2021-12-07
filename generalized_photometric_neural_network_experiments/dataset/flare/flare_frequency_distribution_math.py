@@ -1,3 +1,4 @@
+import numpy as np
 
 solar_luminosity__ergs_per_second = 3.826e33
 seconds_per_day = 86400
@@ -20,3 +21,10 @@ def convert_equivalent_duration_in_days_to_ergs(equivalent_duration__days: float
                                                 star_luminosity__solar_units: float = 1
                                                 ) -> float:
     return equivalent_duration__days * star_luminosity__solar_units * solar_luminosity__ergs_per_day
+
+
+def convert_equivalent_duration_in_days_to_log_ergs(equivalent_duration__days: float,
+                                                    star_luminosity__solar_units: float = 1
+                                                    ) -> float:
+    return np.log10(convert_equivalent_duration_in_days_to_ergs(equivalent_duration__days,
+                                                                star_luminosity__solar_units))

@@ -5,6 +5,14 @@ import numpy as np
 import pandas as pd
 import requests
 from altaipony.fakeflares import aflare
+from pandas.core.groupby import DataFrameGroupBy
+
+synthetic_flare_metadata_path = Path('data/flare/synthetic_flare_metadata.csv')
+
+try:
+    from enum import StrEnum
+except ImportError:
+    from backports.strenum import StrEnum
 from bokeh.io import show
 from bokeh.models import Column, Row
 from bokeh.palettes import Blues, Category10
@@ -14,8 +22,19 @@ from astropy.io import ascii
 import scipy.stats
 
 from generalized_photometric_neural_network_experiments.dataset.flare.flare_frequency_distribution_math import \
-    convert_flare_frequency_distribution_from_absolute_to_equivalent_duration
+    convert_flare_frequency_distribution_from_absolute_to_equivalent_duration, \
+    convert_equivalent_duration_in_days_to_log_ergs
 from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import MetadataColumnName
+
+chosen_log_energy_bin_edges = np.linspace(30, 36, num=50 + 1)
+
+
+class SyntheticFlareMetaDataColumn(StrEnum):
+    FILE_NAME = 'file_name'
+    EQUIVALENT_DURATION__DAYS = 'equivalent_duration__days'
+    AMPLITUDE = 'amplitude'
+    FULL_WIDTH_HALF_MAXIMUM__DAYS = 'full_width_half_maximum__days'
+    ENERGY__ERGS = 'energy__ergs'
 
 
 def generate_flare_time_comparison():
@@ -121,12 +140,14 @@ def generate_gunther_based_flares():
             amplitude, full_width_at_half_maximum)
         flare_data_frame = pd.DataFrame({'flux': flare_fluxes, 'time__days': flare_times})
         flare_data_frame.to_feather(str(synthetic_flares_directory.joinpath(f'{index}.feather')))
-        synthetic_flare_metadata_dictionary['file_name'].append(f'{index}.feather')
-        synthetic_flare_metadata_dictionary['equivalent_duration'].append(np.trapz(y=flare_fluxes, x=flare_times))
-        synthetic_flare_metadata_dictionary['amplitude'].append(amplitude)
-        synthetic_flare_metadata_dictionary['full_width_half_maximum__days'].append(full_width_at_half_maximum)
+        synthetic_flare_metadata_dictionary[SyntheticFlareMetaDataColumn.FILE_NAME].append(f'{index}.feather')
+        synthetic_flare_metadata_dictionary[SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS].append(
+            np.trapz(y=flare_fluxes, x=flare_times))
+        synthetic_flare_metadata_dictionary[SyntheticFlareMetaDataColumn.AMPLITUDE].append(amplitude)
+        synthetic_flare_metadata_dictionary[SyntheticFlareMetaDataColumn.FULL_WIDTH_HALF_MAXIMUM__DAYS].append(
+            full_width_at_half_maximum)
     synthetic_flare_metadata_data_frame = pd.DataFrame(synthetic_flare_metadata_dictionary)
-    synthetic_flare_metadata_data_frame.to_csv('data/flare/synthetic_flare_metadata.csv', index=False)
+    synthetic_flare_metadata_data_frame.to_csv(synthetic_flare_metadata_path, index=False)
 
 
 def generate_flare_for_amplitude_and_full_width_at_half_maximum(amplitude: float, full_width_at_half_maximum: float,
@@ -145,7 +166,6 @@ def generate_flare_for_amplitude_and_full_width_at_half_maximum(amplitude: float
 
 
 def plot_synthetic_flare_equivalent_distribution_histogram():
-    synthetic_flare_metadata_path = Path('data/flare/synthetic_flare_metadata.csv')
     synthetic_flare_metadata_data_frame = pd.read_csv(synthetic_flare_metadata_path, index_col=None)
     linear_bin_values, linear_bin_edges = np.histogram(
         synthetic_flare_metadata_data_frame['equivalent_duration'].values, bins=50)
@@ -161,7 +181,7 @@ def plot_synthetic_flare_equivalent_distribution_histogram():
 
 
 def plot_metadata_flare_frequency_distributions_in_equivalent_duration():
-    metadata_data_frame = pd.read_csv('data/flare/metadata.csv')
+    metadata_data_frame = pd.read_csv(synthetic_flare_metadata_path)
     flaring_metadata_data_frame = metadata_data_frame.dropna()
     unique_flaring_metadata_data_frame = flaring_metadata_data_frame.drop_duplicates(subset=[
         MetadataColumnName.TIC_ID])
@@ -218,6 +238,16 @@ def sample_ffd_counts_for_log_energy_bins(log_energy_bin_edges, ffd_intercept, f
     bin_size = (np.max(log_energy_bin_edges) - np.min(log_energy_bin_edges)) / log_energy_bin_midpoints.shape[0]
     bin_sampled_counts = np.random.poisson(lam=bin_frequencies * time_interval * bin_size)
     return bin_sampled_counts
+
+
+def group_synthetic_flare_metadata_by_energy_bins() -> DataFrameGroupBy:
+    synthetic_flare_metadata = pd.read_csv(synthetic_flare_metadata_path)
+    synthetic_flare_metadata[SyntheticFlareMetaDataColumn.ENERGY__ERGS] = synthetic_flare_metadata[
+        SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS].apply(
+        lambda ed: convert_equivalent_duration_in_days_to_log_ergs(ed))
+    metadata_grouped_by_ed = synthetic_flare_metadata.groupby(pd.cut(
+        synthetic_flare_metadata[SyntheticFlareMetaDataColumn.ENERGY__ERGS], chosen_log_energy_bin_edges))
+    return metadata_grouped_by_ed
 
 
 if __name__ == '__main__':
