@@ -1,13 +1,13 @@
 import io
 from pathlib import Path
+from typing import Optional, Dict, List
 
 import numpy as np
 import pandas as pd
 import requests
 from altaipony.fakeflares import aflare
+from numpy.random import RandomState
 from pandas.core.groupby import DataFrameGroupBy
-
-synthetic_flare_metadata_path = Path('data/flare/synthetic_flare_metadata.csv')
 
 try:
     from enum import StrEnum
@@ -20,13 +20,21 @@ from bokeh.plotting import Figure
 from bs4 import BeautifulSoup
 from astropy.io import ascii
 import scipy.stats
+import scipy.interpolate
 
 from generalized_photometric_neural_network_experiments.dataset.flare.flare_frequency_distribution_math import \
     convert_flare_frequency_distribution_from_absolute_to_equivalent_duration, \
     convert_equivalent_duration_in_days_to_log_ergs
-from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import MetadataColumnName
+from generalized_photometric_neural_network_experiments.dataset.flare.names_and_paths import MetadataColumnName, \
+    metadata_csv_path
 
-chosen_log_energy_bin_edges = np.linspace(30, 36, num=50 + 1)
+synthetic_time_step_size__days = 2.778e-4
+synthetic_flares_directory = Path('data/flare/synthetic_flares')
+synthetic_flare_metadata_path = Path('data/flare/synthetic_flare_metadata.csv')
+injectable_flare_frequency_distributions_directory = Path('data/flare/injectable_flare_frequency_distributions')
+injectable_flare_frequency_distribution_metadata_path = Path(
+    'data/flare/injectable_flare_frequency_distribution_metadata.csv')
+chosen_log_energy_bin_edges = np.linspace(33, 37, num=((37 - 33) * 10) + 1)
 
 
 class SyntheticFlareMetaDataColumn(StrEnum):
@@ -35,6 +43,22 @@ class SyntheticFlareMetaDataColumn(StrEnum):
     AMPLITUDE = 'amplitude'
     FULL_WIDTH_HALF_MAXIMUM__DAYS = 'full_width_half_maximum__days'
     ENERGY__ERGS = 'energy__ergs'
+
+
+class FlareFileColumn(StrEnum):
+    TIME__DAYS = 'time__days'
+    RELATIVE_AMPLITUDE = 'relative_amplitude'
+
+
+class InjectableFlareFrequencyDistributionFileColumn(StrEnum):
+    TIME__DAYS = 'time__days'
+    RELATIVE_AMPLITUDE = 'relative_amplitude'
+
+
+class InjectableFlareFrequencyDistributionMetadataColumn(StrEnum):
+    FILE_NAME = 'file_name'
+    SLOPE = 'slope'
+    INTERCEPT = 'intercept'
 
 
 def generate_flare_time_comparison():
@@ -128,7 +152,6 @@ def generate_gunther_based_flares():
     resample = kernel.resample(100_000, seed=0)
     resampled_log_amplitudes = resample[0, :]
     resampled_log_full_width_at_half_maximums = resample[1, :]
-    synthetic_flares_directory = Path('data/flare/synthetic_flares')
     synthetic_flares_directory.mkdir(exist_ok=True)
     synthetic_flare_metadata_dictionary = {'file_name': [], 'equivalent_duration': [], 'amplitude': [],
                                            'full_width_half_maximum__days': []}
@@ -138,7 +161,8 @@ def generate_gunther_based_flares():
         full_width_at_half_maximum = 10 ** log_full_width_at_half_maximum
         flare_times, flare_fluxes = generate_flare_for_amplitude_and_full_width_at_half_maximum(
             amplitude, full_width_at_half_maximum)
-        flare_data_frame = pd.DataFrame({'flux': flare_fluxes, 'time__days': flare_times})
+        flare_data_frame = pd.DataFrame({FlareFileColumn.RELATIVE_AMPLITUDE: flare_fluxes,
+                                         FlareFileColumn.TIME__DAYS: flare_times})
         flare_data_frame.to_feather(str(synthetic_flares_directory.joinpath(f'{index}.feather')))
         synthetic_flare_metadata_dictionary[SyntheticFlareMetaDataColumn.FILE_NAME].append(f'{index}.feather')
         synthetic_flare_metadata_dictionary[SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS].append(
@@ -151,7 +175,7 @@ def generate_gunther_based_flares():
 
 
 def generate_flare_for_amplitude_and_full_width_at_half_maximum(amplitude: float, full_width_at_half_maximum: float,
-                                                                time_step: float = 2.778e-4
+                                                                time_step: float = synthetic_time_step_size__days
                                                                 ) -> (np.ndarray, np.ndarray):
     times = np.arange(-10, 10, time_step)
     fluxes = aflare(t=times, tpeak=0, dur=full_width_at_half_maximum * 2, ampl=amplitude, upsample=False)
@@ -181,18 +205,7 @@ def plot_synthetic_flare_equivalent_distribution_histogram():
 
 
 def plot_metadata_flare_frequency_distributions_in_equivalent_duration():
-    metadata_data_frame = pd.read_csv(synthetic_flare_metadata_path)
-    flaring_metadata_data_frame = metadata_data_frame.dropna()
-    unique_flaring_metadata_data_frame = flaring_metadata_data_frame.drop_duplicates(subset=[
-        MetadataColumnName.TIC_ID])
-    unique_flaring_metadata_data_frame[
-        MetadataColumnName.EQUIVALENT_DURATION_FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT] = \
-        unique_flaring_metadata_data_frame.apply(
-            lambda data_frame: convert_flare_frequency_distribution_from_absolute_to_equivalent_duration(
-                slope=data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
-                intercept=data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
-                log_luminosity=data_frame[MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS])[1], axis=1)
-
+    unique_flaring_metadata_data_frame = load_unique_metadata_with_ffds_in_equivalent_duration()
     ed_slopes = unique_flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
     ed_intercepts = unique_flaring_metadata_data_frame[
         MetadataColumnName.EQUIVALENT_DURATION_FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
@@ -225,32 +238,97 @@ def plot_metadata_flare_frequency_distributions_in_equivalent_duration():
     show(figure)
 
 
+def load_unique_metadata_with_ffds_in_equivalent_duration():
+    metadata_data_frame = pd.read_csv(metadata_csv_path)
+    flaring_metadata_data_frame = metadata_data_frame.dropna()
+    unique_flaring_metadata_data_frame = flaring_metadata_data_frame.drop_duplicates(subset=[
+        MetadataColumnName.TIC_ID])
+    unique_flaring_metadata_data_frame[
+        MetadataColumnName.EQUIVALENT_DURATION_FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT] = \
+        unique_flaring_metadata_data_frame.apply(
+            lambda data_frame: convert_flare_frequency_distribution_from_absolute_to_equivalent_duration(
+                slope=data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE],
+                intercept=data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT],
+                log_luminosity=data_frame[MetadataColumnName.LUMINOSITY__LOG_10_SOLAR_UNITS])[1], axis=1)
+    return unique_flaring_metadata_data_frame
+
+
 def sample_ffd_counts_for_log_energy_range(ffd_slope: float, ffd_intercept: float, time_interval: float,
                                            range_start: float, range_end: float, number_of_bins: int) -> np.ndarray:
     log_energy_bin_edges = np.linspace(range_start, range_end, num=number_of_bins + 1)
     return sample_ffd_counts_for_log_energy_bins(log_energy_bin_edges, ffd_intercept, ffd_slope, time_interval)
 
 
-def sample_ffd_counts_for_log_energy_bins(log_energy_bin_edges, ffd_intercept, ffd_slope, time_interval):
+def sample_ffd_counts_for_log_energy_bins(log_energy_bin_edges: np.ndarray, ffd_intercept: float, ffd_slope: float,
+                                          time_interval: float, random_state: Optional[RandomState] = None
+                                          ) -> np.ndarray:
     log_energy_bin_midpoints = (log_energy_bin_edges[1:] + log_energy_bin_edges[:-1]) / 2
     bin_log_frequencies = (log_energy_bin_midpoints * ffd_slope) + ffd_intercept
     bin_frequencies = 10 ** bin_log_frequencies
     bin_size = (np.max(log_energy_bin_edges) - np.min(log_energy_bin_edges)) / log_energy_bin_midpoints.shape[0]
-    bin_sampled_counts = np.random.poisson(lam=bin_frequencies * time_interval * bin_size)
+    bin_sampled_counts = random_state.poisson(lam=bin_frequencies * time_interval * bin_size)
     return bin_sampled_counts
 
 
-def group_synthetic_flare_metadata_by_energy_bins() -> DataFrameGroupBy:
+def group_synthetic_flare_metadata_for_log_energy_bins(log_energy_bin_edges: np.ndarray) -> DataFrameGroupBy:
     synthetic_flare_metadata = pd.read_csv(synthetic_flare_metadata_path)
     synthetic_flare_metadata[SyntheticFlareMetaDataColumn.ENERGY__ERGS] = synthetic_flare_metadata[
         SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS].apply(
         lambda ed: convert_equivalent_duration_in_days_to_log_ergs(ed))
     metadata_grouped_by_ed = synthetic_flare_metadata.groupby(pd.cut(
-        synthetic_flare_metadata[SyntheticFlareMetaDataColumn.ENERGY__ERGS], chosen_log_energy_bin_edges))
+        synthetic_flare_metadata[SyntheticFlareMetaDataColumn.ENERGY__ERGS], log_energy_bin_edges))
     return metadata_grouped_by_ed
 
 
+def generate_injectable_flare_frequency_distributions():
+    random_state = np.random.RandomState(seed=0)
+    unique_flaring_metadata_data_frame = load_unique_metadata_with_ffds_in_equivalent_duration()
+    ed_slopes = unique_flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
+    ed_intercepts = unique_flaring_metadata_data_frame[
+        MetadataColumnName.EQUIVALENT_DURATION_FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
+    kernel = scipy.stats.gaussian_kde(np.stack([ed_slopes.values, ed_intercepts.values], axis=0))
+    ed_ffds = kernel.resample(30000, seed=random_state).T
+    epsilon = 1e-6
+    grouped_flare_metadata_data_frame = group_synthetic_flare_metadata_for_log_energy_bins(chosen_log_energy_bin_edges)
+    injectable_ffd_meta_data_dictionaries: List[Dict] = []
+    for index, (slope, intercept) in enumerate(ed_ffds):
+        sampled_ffd_counts = sample_ffd_counts_for_log_energy_bins(ffd_slope=slope, ffd_intercept=intercept,
+                                                                   time_interval=60,
+                                                                   log_energy_bin_edges=chosen_log_energy_bin_edges,
+                                                                   random_state=random_state)
+        injectable_ffd_times = np.arange(0, 60 + epsilon, synthetic_time_step_size__days, dtype=np.float32)
+        injectable_ffd_relative_amplitudes = np.ones_like(injectable_ffd_times, dtype=np.float32)
+        for bin_index, bin_flare_metadata_group in enumerate(grouped_flare_metadata_data_frame):
+            bin_flare_metadata_data_frame = bin_flare_metadata_group[1]
+            bin_count = sampled_ffd_counts[bin_index]
+            for _ in range(bin_count):
+                flare_row = bin_flare_metadata_data_frame.sample(n=1, random_state=random_state).iloc[0]
+                flare_file_name = flare_row[SyntheticFlareMetaDataColumn.FILE_NAME]
+                injection_offset = random_state.uniform(0, 60)
+                flare_path = synthetic_flares_directory.joinpath(flare_file_name)
+                flare_data_frame = pd.read_feather(flare_path)
+                flare_interpolator = scipy.interpolate.interp1d(
+                    flare_data_frame[FlareFileColumn.TIME__DAYS] + injection_offset,
+                    flare_data_frame[FlareFileColumn.RELATIVE_AMPLITUDE],
+                    bounds_error=False, fill_value=0)
+                flare_injectable_amplitudes = flare_interpolator(injectable_ffd_times)
+                injectable_ffd_relative_amplitudes += flare_injectable_amplitudes
+        injectable_path = injectable_flare_frequency_distributions_directory.joinpath(f'{index}.feather')
+        injectable_ffd_data_frame = pd.DataFrame({
+            InjectableFlareFrequencyDistributionFileColumn.TIME__DAYS: injectable_ffd_times,
+            InjectableFlareFrequencyDistributionFileColumn.RELATIVE_AMPLITUDE: injectable_ffd_relative_amplitudes,
+        })
+        injectable_ffd_meta_data_dictionary = {
+            InjectableFlareFrequencyDistributionMetadataColumn.FILE_NAME: str(injectable_path),
+            InjectableFlareFrequencyDistributionMetadataColumn.SLOPE: slope,
+            InjectableFlareFrequencyDistributionMetadataColumn.INTERCEPT: intercept,
+        }
+        injectable_ffd_data_frame.to_feather(injectable_path)
+        injectable_ffd_meta_data_dictionaries.append(injectable_ffd_meta_data_dictionary)
+    injectable_ffd_meta_data_data_frame = pd.DataFrame(injectable_ffd_meta_data_dictionaries)
+    injectable_ffd_meta_data_data_frame.to_csv(injectable_flare_frequency_distribution_metadata_path, index=False)
+
+
 if __name__ == '__main__':
-    x = sample_ffd_counts_for_log_energy_range(ffd_slope=-0.506, ffd_intercept=15.961, time_interval=60,
-                                               range_start=30, range_end=36, number_of_bins=50)
+    generate_injectable_flare_frequency_distributions()
     pass
