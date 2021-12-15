@@ -1,4 +1,5 @@
 import io
+import math
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -59,6 +60,7 @@ class InjectableFlareFrequencyDistributionMetadataColumn(StrEnum):
     FILE_NAME = 'file_name'
     SLOPE = 'slope'
     INTERCEPT = 'intercept'
+    SPLIT = 'split'
 
 
 def generate_flare_time_comparison():
@@ -287,7 +289,8 @@ def generate_injectable_flare_frequency_distributions():
     ed_intercepts = unique_flaring_metadata_data_frame[
         MetadataColumnName.EQUIVALENT_DURATION_FLARE_FREQUENCY_DISTRIBUTION_INTERCEPT]
     kernel = scipy.stats.gaussian_kde(np.stack([ed_slopes.values, ed_intercepts.values], axis=0))
-    ed_ffds = kernel.resample(30000, seed=random_state).T
+    number_of_injectables_to_produce = 30000
+    ed_ffds = kernel.resample(number_of_injectables_to_produce, seed=random_state).T
     epsilon = 1e-6
     grouped_flare_metadata_data_frame = group_synthetic_flare_metadata_for_log_energy_bins(chosen_log_energy_bin_edges)
     injectable_ffd_meta_data_dictionaries: List[Dict] = []
@@ -319,13 +322,23 @@ def generate_injectable_flare_frequency_distributions():
             InjectableFlareFrequencyDistributionFileColumn.RELATIVE_AMPLITUDE: injectable_ffd_relative_amplitudes,
         })
         injectable_ffd_meta_data_dictionary = {
-            InjectableFlareFrequencyDistributionMetadataColumn.FILE_NAME: str(injectable_path),
+            InjectableFlareFrequencyDistributionMetadataColumn.FILE_NAME: str(injectable_path.name),
             InjectableFlareFrequencyDistributionMetadataColumn.SLOPE: slope,
             InjectableFlareFrequencyDistributionMetadataColumn.INTERCEPT: intercept,
         }
         injectable_ffd_data_frame.to_feather(injectable_path)
         injectable_ffd_meta_data_dictionaries.append(injectable_ffd_meta_data_dictionary)
     injectable_ffd_meta_data_data_frame = pd.DataFrame(injectable_ffd_meta_data_dictionaries)
+    number_of_splits = 10
+    split_size = math.ceil(number_of_injectables_to_produce / number_of_splits)
+    split_array = np.zeros(shape=[number_of_injectables_to_produce], dtype=np.int32)
+    for split_index in range(number_of_splits):
+        split_start_index = split_size * split_index
+        split_end_index = split_size * (split_index + 1)
+        if split_end_index > split_array.shape[0]:
+            split_end_index = split_array.shape[0]
+        split_array[split_start_index:split_end_index] = split_index
+    injectable_ffd_meta_data_data_frame[InjectableFlareFrequencyDistributionMetadataColumn.SPLIT] = split_array
     injectable_ffd_meta_data_data_frame.to_csv(injectable_flare_frequency_distribution_metadata_path, index=False)
 
 
