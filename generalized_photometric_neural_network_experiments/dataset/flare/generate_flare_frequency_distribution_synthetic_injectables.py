@@ -32,6 +32,7 @@ from generalized_photometric_neural_network_experiments.dataset.flare.names_and_
 synthetic_time_step_size__days = 2.778e-4
 synthetic_flares_directory = Path('data/flare/synthetic_flares')
 synthetic_flare_metadata_path = Path('data/flare/synthetic_flare_metadata.csv')
+maximilian_gunther_flare_metadata_path = Path('data/flare/maximilian_gunther_flare_metadata.feather')
 injectable_flare_frequency_distributions_directory = Path('data/flare/injectable_flare_frequency_distributions')
 injectable_flare_frequency_distribution_metadata_path = Path(
     'data/flare/injectable_flare_frequency_distribution_metadata.csv')
@@ -84,22 +85,26 @@ def download_maximilian_gunther_flare_data_frame() -> pd.DataFrame:
 
     :return: The data frame of the TIC IDs and flare statistics.
     """
-    request_headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
-                                     '(KHTML, like Gecko) Version/15.1 Safari/605.1.15'}  # Prevent bot blocking.
-    paper_page_response = requests.get('https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a',
-                                       headers=request_headers)
-    paper_page_soup = BeautifulSoup(paper_page_response.content, 'html.parser')
-    if 'captcha' in paper_page_soup.find('title').text.lower():
-        raise ConnectionError('The journal page (correctly) thinks this is a bot. Manually visit '
-                              'https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a then try again.')
-    table_data_link_element = paper_page_soup.find(class_='wd-jnl-art-btn-table-data')
-    paper_data_table_url = table_data_link_element['href']
-    paper_data_table_response = requests.get(paper_data_table_url)
-    paper_data_table = ascii.read(io.BytesIO(paper_data_table_response.content))
-    paper_data_frame = paper_data_table.to_pandas()
-    assert paper_data_frame.shape[0] > 0
-    assert paper_data_frame['Amp'].notna().all()
-    assert paper_data_frame['FWHM'].notna().all()
+    if not maximilian_gunther_flare_metadata_path.exists():
+        request_headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
+                                         '(KHTML, like Gecko) Version/15.1 Safari/605.1.15'}  # Prevent bot blocking.
+        paper_page_response = requests.get('https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a',
+                                           headers=request_headers)
+        paper_page_soup = BeautifulSoup(paper_page_response.content, 'html.parser')
+        if 'captcha' in paper_page_soup.find('title').text.lower():
+            raise ConnectionError('The journal page (correctly) thinks this is a bot. Manually visit '
+                                  'https://iopscience.iop.org/article/10.3847/1538-3881/ab5d3a then try again.')
+        table_data_link_element = paper_page_soup.find(class_='wd-jnl-art-btn-table-data')
+        paper_data_table_url = table_data_link_element['href']
+        paper_data_table_response = requests.get(paper_data_table_url)
+        paper_data_table = ascii.read(io.BytesIO(paper_data_table_response.content))
+        paper_data_frame = paper_data_table.to_pandas()
+        assert paper_data_frame.shape[0] > 0
+        assert paper_data_frame['Amp'].notna().all()
+        assert paper_data_frame['FWHM'].notna().all()
+        paper_data_frame.to_feather(maximilian_gunther_flare_metadata_path)
+    else:
+        paper_data_frame = pd.read_feather(maximilian_gunther_flare_metadata_path)
     return paper_data_frame
 
 
@@ -155,8 +160,11 @@ def generate_gunther_based_flares():
     resampled_log_amplitudes = resample[0, :]
     resampled_log_full_width_at_half_maximums = resample[1, :]
     synthetic_flares_directory.mkdir(exist_ok=True)
-    synthetic_flare_metadata_dictionary = {'file_name': [], 'equivalent_duration': [], 'amplitude': [],
-                                           'full_width_half_maximum__days': []}
+    synthetic_flare_metadata_dictionary = {
+        SyntheticFlareMetaDataColumn.FILE_NAME: [],
+        SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS: [],
+        SyntheticFlareMetaDataColumn.AMPLITUDE: [],
+        SyntheticFlareMetaDataColumn.FULL_WIDTH_HALF_MAXIMUM__DAYS: []}
     for index, (log_amplitude, log_full_width_at_half_maximum) in enumerate(
             zip(resampled_log_amplitudes, resampled_log_full_width_at_half_maximums)):
         amplitude = 10 ** log_amplitude
@@ -194,12 +202,13 @@ def generate_flare_for_amplitude_and_full_width_at_half_maximum(amplitude: float
 def plot_synthetic_flare_equivalent_distribution_histogram():
     synthetic_flare_metadata_data_frame = pd.read_csv(synthetic_flare_metadata_path, index_col=None)
     linear_bin_values, linear_bin_edges = np.histogram(
-        synthetic_flare_metadata_data_frame['equivalent_duration'].values, bins=50)
+        synthetic_flare_metadata_data_frame[SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS].values, bins=50)
     linear_figure = Figure(title='Flare equivalent duration')
     linear_figure.quad(top=linear_bin_values, bottom=0, left=linear_bin_edges[:-1], right=linear_bin_edges[1:],
                        fill_color="navy", line_color="white", alpha=0.5)
     log_bin_values, log_bin_edges = np.histogram(
-        np.log10(synthetic_flare_metadata_data_frame['equivalent_duration'].values), bins=50)
+        np.log10(synthetic_flare_metadata_data_frame[SyntheticFlareMetaDataColumn.EQUIVALENT_DURATION__DAYS].values),
+        bins=50)
     log_figure = Figure(title='Log flare equivalent duration')
     log_figure.quad(top=log_bin_values, bottom=0, left=log_bin_edges[:-1], right=log_bin_edges[1:],
                     fill_color="navy", line_color="white", alpha=0.5)
@@ -284,6 +293,7 @@ def group_synthetic_flare_metadata_for_log_energy_bins(log_energy_bin_edges: np.
 
 def generate_injectable_flare_frequency_distributions():
     random_state = np.random.RandomState(seed=0)
+    injectable_flare_frequency_distributions_directory.mkdir(exist_ok=True, parents=True)
     unique_flaring_metadata_data_frame = load_unique_metadata_with_ffds_in_equivalent_duration()
     ed_slopes = unique_flaring_metadata_data_frame[MetadataColumnName.FLARE_FREQUENCY_DISTRIBUTION_SLOPE]
     ed_intercepts = unique_flaring_metadata_data_frame[
@@ -343,5 +353,5 @@ def generate_injectable_flare_frequency_distributions():
 
 
 if __name__ == '__main__':
+    generate_gunther_based_flares()
     generate_injectable_flare_frequency_distributions()
-    pass
