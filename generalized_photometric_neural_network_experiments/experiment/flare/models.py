@@ -92,9 +92,10 @@ class FlareNet(Model):
         x = self.average_pool(x, training=training)
         x = self.reshape(x, training=training)
 
-        luminosity_shift = tf.concat([tf.zeros_like(auxiliary_informations),
-                                      (-x[:, 0:1]) * auxiliary_informations], axis=1)
-        outputs = x + luminosity_shift
+        # luminosity_shift = tf.concat([tf.zeros_like(auxiliary_informations),
+        #                               (-x[:, 0:1]) * auxiliary_informations], axis=1)
+        # outputs = x + luminosity_shift
+        outputs = x
         return outputs
 
 class MiniFlareNet(Model):

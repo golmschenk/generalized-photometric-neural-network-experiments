@@ -125,7 +125,8 @@ def download_flare_metadata_csv(non_flaring_limit: int = 10000) -> None:
     non_flaring_tic_id_and_sector_list: List[Tuple[int, int]] = []
     non_flaring_tic_ids = non_flaring_target_metadata_data_frame[MetadataColumnName.TIC_ID].values
     random.shuffle(non_flaring_tic_ids)
-    for tic_id in non_flaring_tic_ids[:non_flaring_limit]:
+    # 5x should be enough that without luminosity it should still reach the limit.
+    for tic_id in non_flaring_tic_ids[:non_flaring_limit*5]:
         sectors = tess_data_interface.get_sectors_target_appears_in(tic_id)
         for sector in sectors:
             if sector in flaring_sectors:
