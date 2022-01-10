@@ -63,7 +63,7 @@ def get_tic_id_for_gcvs_row(gcvs_row: pd.Series) -> Optional[int]:
     try:
         gcvs_coordinates = SkyCoord(ra=gcvs_row[GcvsColumnName.RA], dec=gcvs_row[GcvsColumnName.DEC],
                                     unit=(units.hourangle, units.deg), equinox='J2000')
-    except ValueError:  # TODO: This might be a bit too general.
+    except ValueError:  # TODO: Catching that we didn't find one. Catching all ValueErrors might be a bit too general.
         return None
     region_results = Catalogs.query_region(gcvs_coordinates, radius=half_tess_pixel_fov, catalog='TIC',
                                            columns=['**']).to_pandas()
