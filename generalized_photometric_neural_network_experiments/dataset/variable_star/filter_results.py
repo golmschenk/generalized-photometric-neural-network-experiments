@@ -11,10 +11,13 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
     dropped_by_known_count = 0
     dropped_by_centroid_offset_count = 0
 
+    def light_curve_from_row(row: pd.Series) -> TessFfiLightCurve:
+        return TessFfiLightCurve.from_path(Path(row['light_curve_path']))
+    results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
+
     for index, row in results_data_frame.iterrows():
         print(index)
-        light_curve_path = Path(row['light_curve_path'])
-        light_curve = TessFfiLightCurve.from_path(Path(light_curve_path))
+        light_curve = row['light_curve']
         nearest_known_separation = separation_to_nearest_gcvs_rr_lyrae_within_separation(
             light_curve.sky_coord, tess_pixel_angular_size * 3)
         if nearest_known_separation is not None:
@@ -34,16 +37,16 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             continue
 
     def sky_coord_from_row(row: pd.Series) -> SkyCoord:
-        return TessFfiLightCurve.from_path(Path(row['light_curve_path'])).sky_coord
+        return row['light_curve'].sky_coord
 
     def magnitude_from_row(row: pd.Series) -> float:
-        return TessFfiLightCurve.from_path(Path(row['light_curve_path'])).tess_magnitude
+        return row['light_curve'].tess_magnitude
 
     def tic_id_from_row(row: pd.Series) -> float:
-        return TessFfiLightCurve.from_path(Path(row['light_curve_path'])).tic_id
+        return row['light_curve'].tic_id
 
     def sector_from_row(row: pd.Series) -> float:
-        return TessFfiLightCurve.from_path(Path(row['light_curve_path'])).sector
+        return row['light_curve'].sector
 
     results_data_frame['tic_id'] = results_data_frame.apply(tic_id_from_row, axis=1)
     results_data_frame['sector'] = results_data_frame.apply(sector_from_row, axis=1)
@@ -89,11 +92,11 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
     results_data_frame.drop('sky_coord', axis=1, inplace=True)
     results_data_frame.drop('index', axis=1, inplace=True)
     def period_from_row(row: pd.Series) -> float:
-        light_curve_ = TessFfiLightCurve.from_path(Path(row['light_curve_path']))
+        light_curve_ = row['light_curve']
         fold_period = light_curve_.variability_period
         return fold_period
     def period_epoch_from_row(row: pd.Series) -> float:
-        light_curve_ = TessFfiLightCurve.from_path(Path(row['light_curve_path']))
+        light_curve_ = row['light_curve']
         fold_epoch = light_curve_.variability_period_epoch
         return fold_epoch
     results_data_frame['period'] = results_data_frame.apply(period_from_row, axis=1)
