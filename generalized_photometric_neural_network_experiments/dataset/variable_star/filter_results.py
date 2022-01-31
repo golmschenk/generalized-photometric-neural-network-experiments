@@ -1,3 +1,6 @@
+import json
+
+import lightkurve
 from astropy.coordinates import SkyCoord, Angle
 from pathlib import Path
 
@@ -10,24 +13,35 @@ from ramjet.photometric_database.tess_ffi_light_curve import separation_to_neare
 def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
     dropped_by_known_count = 0
     dropped_by_centroid_offset_count = 0
-
+    print('Loading light curves...', flush=True)
     def light_curve_from_row(row: pd.Series) -> TessFfiLightCurve:
-        return TessFfiLightCurve.from_path(Path(row['light_curve_path']))
+        light_curve_path = Path(row['light_curve_path'])
+        # Hack to fix changes to Adapt.
+        old_adapt_path = Path('/att/gpfsfs/home/golmsche')
+        new_adapt_path = Path('/att/gpfsfs/briskfs01/ppl/golmsche')
+        if old_adapt_path in light_curve_path.parents:
+            sub_path = light_curve_path.relative_to(old_adapt_path)
+            light_curve_path = new_adapt_path.joinpath(sub_path)
+        return TessFfiLightCurve.from_path(light_curve_path)
     results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
-
+    print('Calculating variability...', flush=True)
     for index, row in results_data_frame.iterrows():
-        print(index)
+        print(index, end='\r', flush=True)
         light_curve = row['light_curve']
-        nearest_known_separation = separation_to_nearest_gcvs_rr_lyrae_within_separation(
-            light_curve.sky_coord, tess_pixel_angular_size * 3)
-        if nearest_known_separation is not None:
-            results_data_frame.drop(index, inplace=True)
-            dropped_by_known_count += 1
+        try:
+            nearest_known_separation = separation_to_nearest_gcvs_rr_lyrae_within_separation(
+                light_curve.sky_coord, tess_pixel_angular_size * 3)
+            if nearest_known_separation is not None:
+                results_data_frame.drop(index, inplace=True)
+                dropped_by_known_count += 1
+                continue
+        except json.decoder.JSONDecodeError:
+            dropped_by_centroid_offset_count += 1
             continue
         try:
             separation_to_variability_photometric_centroid = \
                 light_curve.get_angular_distance_to_variability_photometric_centroid()
-        except CentroidAlgorithmFailedError:
+        except (CentroidAlgorithmFailedError, lightkurve.search.SearchError, ValueError):
             results_data_frame.drop(index, inplace=True)
             dropped_by_centroid_offset_count += 1
             continue
@@ -35,6 +49,8 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             results_data_frame.drop(index, inplace=True)
             dropped_by_centroid_offset_count += 1
             continue
+
+    print('Adding additional columns...', flush=True)
 
     def sky_coord_from_row(row: pd.Series) -> SkyCoord:
         return row['light_curve'].sky_coord
@@ -57,8 +73,9 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
     results_data_frame['magnitude'] = results_data_frame.apply(magnitude_from_row, axis=1)
     duplicated_count = results_data_frame.shape[0]
     dropped_due_to_brighter_target_nearby = 0
+    print('Comparing separations...', flush=True)
     for index, row in results_data_frame.iterrows():
-        print(index)
+        print(index, end='\r', flush=True)
         data_frame_excluding_row = results_data_frame.drop(index)
         def separation_to_current(other_row: pd.Series) -> Angle:
             return row['sky_coord'].separation(other_row['sky_coord'])
@@ -83,22 +100,39 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
     print(f'Dropped as TIC ID duplicates: {tic_id_duplicated_count - tic_id_deduplicated_count}')
     print(f'Dropped as duplicates: {duplicated_count - deduplicated_count}')
     print(f'Dropped due to brighter target nearby: {dropped_due_to_brighter_target_nearby}')
+
     def ra_from_row(row: pd.Series) -> float:
         return row['sky_coord'].ra
     results_data_frame['ra'] = results_data_frame.apply(ra_from_row, axis=1)
+
     def dec_from_row(row: pd.Series) -> float:
         return row['sky_coord'].dec
     results_data_frame['dec'] = results_data_frame.apply(dec_from_row, axis=1)
-    results_data_frame.drop('sky_coord', axis=1, inplace=True)
-    results_data_frame.drop('index', axis=1, inplace=True)
+
     def period_from_row(row: pd.Series) -> float:
         light_curve_ = row['light_curve']
         fold_period = light_curve_.variability_period
         return fold_period
+
     def period_epoch_from_row(row: pd.Series) -> float:
         light_curve_ = row['light_curve']
         fold_epoch = light_curve_.variability_period_epoch
         return fold_epoch
+
     results_data_frame['period'] = results_data_frame.apply(period_from_row, axis=1)
     results_data_frame['period_epoch'] = results_data_frame.apply(period_epoch_from_row, axis=1)
+    results_data_frame.drop('sky_coord', axis=1, inplace=True)
+    results_data_frame.drop('index', axis=1, inplace=True)
+    results_data_frame.drop('light_curve', axis=1, inplace=True)
     return results_data_frame
+
+
+if __name__ == '__main__':
+    infer_results_path = Path('/att/gpfsfs/briskfs01/ppl/golmsche/generalized-photometric-neural-network-experiments'
+                              '/logs/FfiHades_corrected_non_rrl_label_2021_12_31_14_37_00/'
+                              'infer_results_2022-01-01-18-53-15.csv')
+    filtered_results_path = infer_results_path.parent.joinpath(f'filtered_{infer_results_path.name}')
+    results_data_frame = pd.read_csv(infer_results_path)
+    results_data_frame = results_data_frame.head(10_000)
+    results_data_frame = filter_rr_lyrae(results_data_frame)
+    results_data_frame.to_csv(filtered_results_path, index=False)
