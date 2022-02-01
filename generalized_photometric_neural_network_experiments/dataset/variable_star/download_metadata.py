@@ -9,6 +9,7 @@ from astropy import units
 from bokeh.io import show
 from bokeh.palettes import Category10
 from bokeh.plotting import Figure
+from astroquery.gaia import Gaia
 
 from ramjet.data_interface.tess_data_interface import TessDataInterface
 
@@ -76,7 +77,7 @@ def get_tic_id_for_gcvs_row(gcvs_row: pd.Series) -> Optional[int]:
         return None
 
 
-def download_metadata():
+def download_gcvs_metadata():
     # gcvs_catalog_astropy_table = Vizier(columns=['**'], catalog='B/gcvs/gcvs_cat', row_limit=-1).query_constraints()[0]
     # gcvs_catalog_data_frame = gcvs_catalog_astropy_table.to_pandas()
     rr_lyrae_labels = ['RR', 'RR(B)', 'RRAB', 'RRC']
@@ -100,8 +101,21 @@ def download_metadata():
     print(np.median(periods))
     print(np.min(periods))
     print(np.max(periods))
-    pass
+
+
+
+def download_gaia_metadata_csv():
+    Gaia.ROW_LIMIT = -1
+    query_string = """
+    SELECT *
+    FROM gaiadr2.vari_classifier_result
+    INNER JOIN gaiadr2.gaia_source USING (source_id)
+    """
+    gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
+    gaia_variable_target_result = gaia_variable_target_job.get_results()
+    gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
+    gaia_variable_target_data_frame.to_csv('data/variables/gaia_variable_targets.csv', index=False)
 
 
 if __name__ == '__main__':
-    download_metadata()
+    download_gcvs_metadata()
