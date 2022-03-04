@@ -1,8 +1,9 @@
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
 import pandas as pd
-from astropy.coordinates import Angle, SkyCoord
+from astropy.coordinates import Angle, SkyCoord, ICRS
 from astroquery.mast import Catalogs
 from astroquery.vizier import Vizier
 from astropy import units
@@ -10,8 +11,9 @@ from bokeh.io import show
 from bokeh.palettes import Category10
 from bokeh.plotting import Figure
 from astroquery.gaia import Gaia
+from retrying import retry
 
-from ramjet.data_interface.tess_data_interface import TessDataInterface
+from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
 
 try:
     from enum import StrEnum
@@ -58,6 +60,7 @@ def get_gcvs_catalog_entries_without_labels(labels: List[str]) -> pd.DataFrame:
     return data_frame_of_classes
 
 
+@retry(retry_on_exception=is_common_mast_connection_error)
 def get_tic_id_for_gcvs_row(gcvs_row: pd.Series) -> Optional[int]:
     # TODO: should we really search so much of the pixel size?
     half_tess_pixel_fov = Angle(10.5, unit=units.arcsecond)
@@ -67,6 +70,25 @@ def get_tic_id_for_gcvs_row(gcvs_row: pd.Series) -> Optional[int]:
     except ValueError:  # TODO: Catching that we didn't find one. Catching all ValueErrors might be a bit too general.
         return None
     region_results = Catalogs.query_region(gcvs_coordinates, radius=half_tess_pixel_fov, catalog='TIC',
+                                           columns=['**']).to_pandas()
+    # TODO: Perhaps filter on magnitudes max and min? Might not matter though, so long as it's close to the original
+    # TODO: target, as the photometric data will not look different.
+    if region_results.shape[0] != 0:
+        # First index should be the closest.
+        return int(region_results['ID'].iloc[0])
+    else:
+        return None
+
+@retry(retry_on_exception=is_common_mast_connection_error)
+def get_tic_id_for_gaia_row(gaia_row: pd.Series) -> Optional[int]:
+    # TODO: should we really search so much of the pixel size?
+    half_tess_pixel_fov = Angle(10.5, unit=units.arcsecond)
+    try:
+        gaia_coordinates = SkyCoord(ra=gaia_row['ra'], dec=gaia_row['dec'], unit=units.deg)
+    except ValueError:  # TODO: Catching that we didn't find one. Catching all ValueErrors might be a bit too general.
+        return None
+    gaia_coordinates = gaia_coordinates.transform_to(ICRS)
+    region_results = Catalogs.query_region(gaia_coordinates, radius=half_tess_pixel_fov, catalog='TIC',
                                            columns=['**']).to_pandas()
     # TODO: Perhaps filter on magnitudes max and min? Might not matter though, so long as it's close to the original
     # TODO: target, as the photometric data will not look different.
@@ -111,10 +133,11 @@ def download_gaia_metadata_csv():
     FROM gaiadr2.vari_classifier_result
     INNER JOIN gaiadr2.gaia_source USING (source_id)
     """
+    gaia_variable_targets_csv_path = Path('data/variables/gaia_variable_targets.csv')
     gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
     gaia_variable_target_result = gaia_variable_target_job.get_results()
     gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
-    gaia_variable_target_data_frame.to_csv('data/variables/gaia_variable_targets.csv', index=False)
+    gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, index=False)
 
 
 if __name__ == '__main__':
