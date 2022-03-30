@@ -4,7 +4,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 from astropy.coordinates import Angle, SkyCoord, ICRS
-from astroquery.mast import Catalogs
+from astroquery.mast import Catalogs, Observations
 from astroquery.vizier import Vizier
 from astropy import units
 from bokeh.io import show
@@ -14,6 +14,8 @@ from astroquery.gaia import Gaia
 from retrying import retry
 
 from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
+from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve
+from ramjet.photometric_database.tess_light_curve import TessLightCurve
 
 try:
     from enum import StrEnum
@@ -140,5 +142,76 @@ def download_gaia_metadata_csv():
     gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, index=False)
 
 
+def download_rr_lyrae_gaia_tess_metadata_csv():
+    Gaia.ROW_LIMIT = -1
+    query_string = """
+        SELECT *
+        FROM gaiadr2.vari_classifier_result
+        INNER JOIN gaiadr2.gaia_source USING (source_id)
+        """
+    gaia_rr_lyrae_targets_csv_path = Path('data/variables/gaia_tess_rr_lyrae_targets.csv')
+    gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
+    gaia_variable_target_result = gaia_variable_target_job.get_results()
+    gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
+    rr_lyrae_labels = ['ARRD', 'RRC', 'RRAB', 'RRD']
+    gaia_rr_lyrae_target_data_frame = gaia_variable_target_data_frame[gaia_variable_target_data_frame['best_class_name'].isin(rr_lyrae_labels)]
+    gaia_rr_lyrae_target_data_frame.to_csv('quick.csv')
+    # gaia_rr_lyrae_target_data_frame = pd.read_csv('quick.csv')
+
+    def light_curve_from_row(row: pd.Series) -> TessLightCurve:
+        light_curve = TessLightCurve()
+        light_curve.tic_id = get_tic_id_for_gaia_row(row)
+        return light_curve
+
+    gaia_rr_lyrae_target_data_frame['light_curve'] = gaia_rr_lyrae_target_data_frame.apply(light_curve_from_row, axis=1)
+
+    def sky_coord_from_row(row: pd.Series) -> SkyCoord:
+        return row['light_curve'].sky_coord
+
+    def magnitude_from_row(row: pd.Series) -> float:
+        return row['light_curve'].tess_magnitude
+
+    def tic_id_from_row(row: pd.Series) -> float:
+        return row['light_curve'].tic_id
+
+    gaia_rr_lyrae_target_data_frame['tic_id'] = gaia_rr_lyrae_target_data_frame.apply(tic_id_from_row, axis=1)
+    gaia_rr_lyrae_target_data_frame['sky_coord'] = gaia_rr_lyrae_target_data_frame.apply(sky_coord_from_row, axis=1)
+    gaia_rr_lyrae_target_data_frame['magnitude'] = gaia_rr_lyrae_target_data_frame.apply(magnitude_from_row, axis=1)
+    gaia_rr_lyrae_target_data_frame.to_csv(gaia_rr_lyrae_targets_csv_path, index=False)
+
+def download_gaia_rr_lyrae_metadata_to_csv():
+    Gaia.ROW_LIMIT = -1
+    query_string = """
+        SELECT *
+        FROM gaiadr2.vari_rrlyrae
+        """
+    gaia_rr_lyrae_metadata_csv_path = Path('data/variables/gaia_rr_lyrae_metadata.csv')
+    gaia_rr_lyrae_metadata_job = Gaia.launch_job_async(query=query_string)
+    gaia_rr_lyrae_metadata_result = gaia_rr_lyrae_metadata_job.get_results()
+    gaia_rr_lyrae_metadata_data_frame: pd.DataFrame = gaia_rr_lyrae_metadata_result.to_pandas()
+    gaia_rr_lyrae_metadata_data_frame.to_csv(gaia_rr_lyrae_metadata_csv_path)
+
+
+def download_tic_rows_for_gaia_rr_lyrae_source_ids():
+    Observations.TIMEOUT = 2000
+    Observations.PAGESIZE = 3000
+    Catalogs.TIMEOUT = 2000
+    Catalogs.PAGESIZE = 3000
+    try:  # Temporary fix for astroquery's update of timeout and pagesize locations.
+        Observations._portal_api_connection.TIMEOUT = 2000
+        Observations._portal_api_connection.PAGESIZE = 3000
+        Catalogs._portal_api_connection.TIMEOUT = 2000
+        Catalogs._portal_api_connection.PAGESIZE = 3000
+    except AttributeError:
+        pass
+
+    gaia_variable_target_data_frame = pd.read_csv('data/variables/gaia_rr_lyrae_metadata.csv')
+    gaia_source_ids = gaia_variable_target_data_frame['source_id'].values
+    tic_rows_for_gaia_source_ids_astropy_table = Catalogs.query_criteria(catalog="TIC", GAIA=gaia_source_ids)
+    tic_rows_for_gaia_source_ids_data_frame = tic_rows_for_gaia_source_ids_astropy_table.to_pandas()
+    tic_rows_for_gaia_source_ids_data_frame.to_csv('data/variables/tic_rows_for_gaia_rr_lyrae_source_ids.csv')
+
+
 if __name__ == '__main__':
     download_gcvs_metadata()
+    download_rr_lyrae_gaia_tess_metadata_csv()
