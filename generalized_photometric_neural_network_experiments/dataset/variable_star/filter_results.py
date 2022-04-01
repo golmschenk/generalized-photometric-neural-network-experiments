@@ -25,6 +25,8 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             light_curve_path = new_adapt_path.joinpath(sub_path)
         return TessFfiLightCurve.from_path(light_curve_path)
 
+    gaia_rr_lyrae_minimum_period = 0.2009529790117998
+    gaia_rr_lyrae_maximum_period = 0.9975636975622972
     results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
     print('Calculating variability...', flush=True)
     for index, row in results_data_frame.iterrows():
@@ -43,7 +45,8 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             continue
         try:
             separation_to_variability_photometric_centroid = \
-                light_curve.get_angular_distance_to_variability_photometric_centroid()
+                light_curve.get_angular_distance_to_variability_photometric_centroid(
+                    minimum_period=gaia_rr_lyrae_minimum_period, maximum_period=gaia_rr_lyrae_maximum_period)
         except (CentroidAlgorithmFailedError, lightkurve.search.SearchError, ValueError):
             results_data_frame.drop(index, inplace=True)
             dropped_by_centroid_offset_count += 1
