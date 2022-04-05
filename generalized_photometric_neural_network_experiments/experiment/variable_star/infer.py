@@ -10,7 +10,7 @@ from generalized_photometric_neural_network_experiments.dataset.variable_star.va
 from ramjet.models.hades import FfiHades
 from ramjet.trial import infer
 
-log_name = 'logs/FfiHades_corrected_non_rrl_label_2021_12_31_14_37_00'
+log_name = 'logs/FfiHades_no_bn_2022_03_03_00_28_19'
 saved_log_directory = Path(f'{log_name}')
 datetime_string = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
