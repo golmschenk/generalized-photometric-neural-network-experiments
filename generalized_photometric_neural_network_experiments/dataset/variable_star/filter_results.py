@@ -1,13 +1,54 @@
 import json
+from typing import Optional
 
 import lightkurve
+from astropy import units
 from astropy.coordinates import SkyCoord, Angle
 from pathlib import Path
 
 import pandas as pd
+from astroquery.gaia import Gaia
+from retrying import retry
 
+from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
 from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve, tess_pixel_angular_size, \
-    CentroidAlgorithmFailedError, separation_to_nearest_gaia_rr_lyrae_within_separation
+    CentroidAlgorithmFailedError
+
+
+class GaiaAwareTessFfiLightCurve(TessFfiLightCurve):
+    Gaia.ROW_LIMIT = -1
+    query_string = """
+    SELECT *
+    FROM gaiadr2.vari_classifier_result
+    INNER JOIN gaiadr2.gaia_source USING (source_id)
+    """
+    gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
+    gaia_variable_target_result = gaia_variable_target_job.get_results()
+    gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
+    gaia_rr_lyrae_target_data_frame = gaia_variable_target_data_frame[
+        gaia_variable_target_data_frame['best_class_name'].isin(['ARRD', 'RRC', 'RRAB', 'RRD'])]
+
+    def __init__(self):
+        super().__init__()
+
+    @retry(retry_on_exception=is_common_mast_connection_error)
+    def separation_to_nearest_gaia_rr_lyrae_within_separation(self, sky_coord: SkyCoord,
+                                                              maximum_separation: Angle(21, unit=units.arcsecond)
+                                                              ) -> Optional[Angle]:
+        gaia_job = Gaia.cone_search_async(sky_coord, radius=maximum_separation)
+        gaia_result = gaia_job.get_results()
+        gaia_region_data_frame = gaia_result.to_pandas()
+        rr_lyrae_gaia_region_data_frame = gaia_region_data_frame[
+            gaia_region_data_frame['source_id'].isin(self.gaia_rr_lyrae_target_data_frame['source_id'])]
+        if rr_lyrae_gaia_region_data_frame.shape[0] == 0:
+            return None
+        try:
+            closet_rr_lyrae_row = rr_lyrae_gaia_region_data_frame.iloc[0]
+            closet_rr_lyrae_coordinates = SkyCoord(ra=closet_rr_lyrae_row['ra'], dec=closet_rr_lyrae_row['dec'],
+                                                   unit=units.deg)
+            return sky_coord.separation(closet_rr_lyrae_coordinates)
+        except IndexError:
+            return None
 
 
 def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
@@ -33,7 +74,7 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
         print(index, end='\r', flush=True)
         light_curve = row['light_curve']
         try:
-            nearest_known_separation = separation_to_nearest_gaia_rr_lyrae_within_separation(
+            nearest_known_separation = light_curve.separation_to_nearest_gaia_rr_lyrae_within_separation(
                 light_curve.sky_coord, tess_pixel_angular_size * 2)
             if nearest_known_separation is not None:
                 results_data_frame.drop(index, inplace=True)
