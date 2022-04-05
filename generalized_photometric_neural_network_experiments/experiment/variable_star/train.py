@@ -1,19 +1,15 @@
 import os
+from generalized_photometric_neural_network_experiments.dataset.variable_star.variable_star_databases import \
+    RrLyraeFfiDatabase
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 """Code for running training."""
+
 import tensorflow as tf
 from tensorflow.keras.losses import BinaryCrossentropy
 from pathlib import Path
 
-from generalized_photometric_neural_network_experiments.dataset.variable_star.variable_star_databases import \
-    RrLyraeFfiDatabase
-from ramjet.basic_models import SimpleFfiLightCurveCnn
-from ramjet.models.cura import Cura
-from ramjet.models.hades import Hades, FfiHades
-from ramjet.photometric_database.derived.moa_survey_none_single_and_binary_database import \
-    MoaSurveyNoneSingleAndBinaryDatabase
-from ramjet.photometric_database.derived.tess_two_minute_cadence_transit_databases import \
-    TessTwoMinuteCadenceStandardAndInjectedTransitDatabase
+from ramjet.models.hades import FfiHades
 from ramjet.trial import create_logging_metrics, create_logging_callbacks
 
 
@@ -22,7 +18,7 @@ def train():
     print('Starting training process...', flush=True)
     database = RrLyraeFfiDatabase()
     model = FfiHades()
-    trial_name = f'{type(model).__name__}_corrected_non_rrl_label'
+    trial_name = f'{type(model).__name__}'
     epochs_to_run = 1000
     logs_directory = Path('logs')
     logging_callbacks = create_logging_callbacks(logs_directory, trial_name, database,
