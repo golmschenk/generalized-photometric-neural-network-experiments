@@ -19,7 +19,7 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
         light_curve_path = Path(row['light_curve_path'])
         # Hack to fix changes to Adapt.
         old_adapt_path = Path('/att/gpfsfs/home/golmsche')
-        new_adapt_path = Path('/att/gpfsfs/briskfs01/ppl/golmsche')
+        new_adapt_path = Path('/adapt/nobackup/people/golmsche')
         if old_adapt_path in light_curve_path.parents:
             sub_path = light_curve_path.relative_to(old_adapt_path)
             light_curve_path = new_adapt_path.joinpath(sub_path)
