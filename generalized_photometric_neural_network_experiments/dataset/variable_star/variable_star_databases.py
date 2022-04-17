@@ -1,5 +1,5 @@
 from generalized_photometric_neural_network_experiments.dataset.variable_star.variable_star_light_curve_collections import \
-    RrLyraeFfiLightCurveCollection, NonRrLyraeFfiLightCurveCollection
+    RrLyraeFfiLightCurveCollection, NonRrLyraeVariableFfiLightCurveCollection, NonRrLyraeFfiLightCurveCollection
 from ramjet.photometric_database.derived.tess_ffi_eclipsing_binary_light_curve_collection import \
     TessFfiAntiEclipsingBinaryForTransitLightCurveCollection
 from ramjet.photometric_database.derived.tess_ffi_light_curve_collection import TessFfiLightCurveCollection
@@ -17,13 +17,15 @@ class RrLyraeFfiDatabase(TessFfiDatabase):
         super().__init__()
         self.training_standard_light_curve_collections = [
             RrLyraeFfiLightCurveCollection(dataset_splits=list(range(8)), magnitude_range=magnitude_range),
-            NonRrLyraeFfiLightCurveCollection(dataset_splits=list(range(8)), magnitude_range=magnitude_range),
-            TessFfiLightCurveCollection(dataset_splits=list(range(8)), magnitude_range=magnitude_range)
+            NonRrLyraeVariableFfiLightCurveCollection(dataset_splits=list(range(8)), magnitude_range=magnitude_range),
+            NonRrLyraeFfiLightCurveCollection(dataset_splits=list(range(8)), magnitude_range=magnitude_range)
         ]
         self.validation_standard_light_curve_collections = [
             RrLyraeFfiLightCurveCollection(dataset_splits=[8], magnitude_range=magnitude_range),
-            NonRrLyraeFfiLightCurveCollection(dataset_splits=[8], magnitude_range=magnitude_range),
-            TessFfiLightCurveCollection(dataset_splits=[8], magnitude_range=magnitude_range)
+            NonRrLyraeVariableFfiLightCurveCollection(dataset_splits=[8], magnitude_range=magnitude_range),
+            NonRrLyraeFfiLightCurveCollection(dataset_splits=[8], magnitude_range=magnitude_range)
         ]
         self.inference_light_curve_collections = [
-            TessFfiLightCurveCollection(magnitude_range=magnitude_range)]
+            # TessFfiLightCurveCollection(magnitude_range=magnitude_range),
+            NonRrLyraeFfiLightCurveCollection(magnitude_range=magnitude_range),
+        ]

@@ -1,12 +1,12 @@
 import os
 
 from generalized_photometric_neural_network_experiments.dataset.variable_star.variable_star_light_curve_collections import \
-    RrLyraeFfiLightCurveCollection
+    RrLyraeFfiLightCurveCollection, NonRrLyraeFfiLightCurveCollection
 from generalized_photometric_neural_network_experiments.dataset.variable_star.variable_star_metadata_manager import \
     VariableStarMetadata, VariableTypeName
 from ramjet.photometric_database.derived.tess_ffi_light_curve_collection import TessFfiLightCurveCollection
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 """Code for inference on the contents of a directory."""
 
 import datetime
@@ -24,7 +24,7 @@ datetime_string = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 print('Setting up dataset...', flush=True)
 database = RrLyraeFfiDatabase()
 database.inference_light_curve_collections = [
-    TessFfiLightCurveCollection(dataset_splits=[9], magnitude_range=magnitude_range)]
+    NonRrLyraeFfiLightCurveCollection(dataset_splits=[9], magnitude_range=magnitude_range)]
 inference_dataset = database.generate_inference_dataset()
 
 print('Loading model...', flush=True)
