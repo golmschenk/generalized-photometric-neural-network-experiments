@@ -11,8 +11,8 @@ from astroquery.gaia import Gaia
 from retrying import retry
 
 from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
-from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve, tess_pixel_angular_size, \
-    CentroidAlgorithmFailedError
+from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve, tess_pixel_angular_size
+from ramjet.photometric_database.tess_light_curve import CentroidAlgorithmFailedError
 
 
 class GaiaAwareTessFfiLightCurve(TessFfiLightCurve):
