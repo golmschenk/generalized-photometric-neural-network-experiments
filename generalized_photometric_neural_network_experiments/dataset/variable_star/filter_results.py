@@ -86,7 +86,7 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             continue
         try:
             separation_to_variability_photometric_centroid = \
-                light_curve.get_angular_distance_to_variability_photometric_centroid(
+                light_curve.estimate_angular_distance_to_variability_photometric_centroid_from_ffi(
                     minimum_period=gaia_rr_lyrae_minimum_period, maximum_period=gaia_rr_lyrae_maximum_period)
         except (CentroidAlgorithmFailedError, lightkurve.search.SearchError, ValueError):
             results_data_frame.drop(index, inplace=True)
