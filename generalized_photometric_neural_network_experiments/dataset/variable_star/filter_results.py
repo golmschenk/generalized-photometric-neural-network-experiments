@@ -66,8 +66,8 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             light_curve_path = new_adapt_path.joinpath(sub_path)
         return TessFfiLightCurve.from_path(light_curve_path)
 
-    gaia_rr_lyrae_minimum_period = 0.2009529790117998
-    gaia_rr_lyrae_maximum_period = 0.9975636975622972
+    gaia_rr_lyrae_minimum_period = 0.2009529790117998  # Minimum from the GAIA dataset.
+    gaia_rr_lyrae_maximum_period = 0.9975636975622972  # Maximum from the GAIA dataset.
     results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
     print('Calculating variability...', flush=True)
     for index, row in results_data_frame.iterrows():
