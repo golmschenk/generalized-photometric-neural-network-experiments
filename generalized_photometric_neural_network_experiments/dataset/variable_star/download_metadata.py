@@ -14,13 +14,23 @@ from astroquery.gaia import Gaia
 from retrying import retry
 
 from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
-from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve
-from ramjet.photometric_database.tess_light_curve import TessLightCurve
+from ramjet.photometric_database.tess_light_curve import TessLightCurve, MissingTicRow
 
 try:
     from enum import StrEnum
 except ImportError:
     from backports.strenum import StrEnum
+
+gaia_variable_targets_csv_path = Path('data/variables/gaia_variable_targets2.csv')
+gaia_dr2_rr_lyrae_classes = ['ARRD', 'RRC', 'RRAB', 'RRD']
+gaia_dr3_rr_lyrae_classes = ['RR']
+gaia_credential_path = Path('gaia_credentials_file.txt')
+# if gaia_credential_path.exists():
+#     print(f'Logging into Gaia using credentials from {gaia_credential_path}...', flush=True)
+#     Gaia.login(credentials_file=gaia_credential_path)
+# else:
+#     print(f'No {gaia_credential_path} found. Continuing as unlogged in user for Gaia download with row limit of 3M.',
+#           flush=True)
 
 
 class GcvsColumnName(StrEnum):
@@ -81,6 +91,7 @@ def get_tic_id_for_gcvs_row(gcvs_row: pd.Series) -> Optional[int]:
     else:
         return None
 
+
 @retry(retry_on_exception=is_common_mast_connection_error)
 def get_tic_id_for_gaia_row(gaia_row: pd.Series) -> Optional[int]:
     # TODO: should we really search so much of the pixel size?
@@ -117,9 +128,9 @@ def download_gcvs_metadata():
     fill_alpha = 0.8
     line_alpha = 0.9
     period_histogram_figure.quad(top=histogram_values, bottom=0,
-                                left=bin_edges[:-1], right=bin_edges[1:],
-                                fill_alpha=fill_alpha, color=Category10[10][0],
-                                line_alpha=line_alpha)
+                                 left=bin_edges[:-1], right=bin_edges[1:],
+                                 fill_alpha=fill_alpha, color=Category10[10][0],
+                                 line_alpha=line_alpha)
     show(period_histogram_figure)
     print(np.mean(periods))
     print(np.median(periods))
@@ -127,35 +138,51 @@ def download_gcvs_metadata():
     print(np.max(periods))
 
 
-
-def download_gaia_metadata_csv():
-    Gaia.ROW_LIMIT = -1
-    query_string = """
-    SELECT *
-    FROM gaiadr2.vari_classifier_result
-    INNER JOIN gaiadr2.gaia_source USING (source_id)
-    """
-    gaia_variable_targets_csv_path = Path('data/variables/gaia_variable_targets.csv')
-    gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
-    gaia_variable_target_result = gaia_variable_target_job.get_results()
-    gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
-    gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, index=False)
+def download_gaia_variable_targets_metadata_csv():
+    highest_source_id_collected = -1
+    gaia_variable_targets_csv_path.unlink(missing_ok=True)
+    query_number = 0
+    while True:
+        rows_per_query = 1_000_000
+        Gaia.ROW_LIMIT = -1
+        query_string = f"""
+        SELECT TOP {rows_per_query} *
+        FROM gaiadr3.vari_classifier_result
+        INNER JOIN gaiadr3.gaia_source USING (source_id)
+        WHERE source_id > {highest_source_id_collected}
+        ORDER BY source_id ASC
+        """
+        print(f'Query {query_number}: From source_id {highest_source_id_collected}, '
+              f'requesting {rows_per_query} rows...')
+        gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
+        gaia_variable_target_result = gaia_variable_target_job.get_results()
+        gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
+        print(f'Query {query_number}: Obtained {gaia_variable_target_data_frame.shape[0]} rows.')
+        if gaia_variable_target_data_frame.shape[0] == 0:
+            break
+        gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, index=False)
+        gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, mode='a',
+                                               header=not gaia_variable_targets_csv_path.exists())
+        highest_source_id_collected = gaia_variable_target_data_frame['source_id'].iloc[-1]
+        query_number += 1
 
 
 def download_rr_lyrae_gaia_tess_metadata_csv():
     Gaia.ROW_LIMIT = -1
     query_string = """
         SELECT *
-        FROM gaiadr2.vari_classifier_result
-        INNER JOIN gaiadr2.gaia_source USING (source_id)
+        FROM gaiadr3.vari_classifier_result
+        INNER JOIN gaiadr3.gaia_source USING (source_id)
         """
     gaia_rr_lyrae_targets_csv_path = Path('data/variables/gaia_tess_rr_lyrae_targets.csv')
     gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
     gaia_variable_target_result = gaia_variable_target_job.get_results()
     gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
-    rr_lyrae_labels = ['ARRD', 'RRC', 'RRAB', 'RRD']
-    gaia_rr_lyrae_target_data_frame = gaia_variable_target_data_frame[gaia_variable_target_data_frame['best_class_name'].isin(rr_lyrae_labels)]
+    rr_lyrae_labels = gaia_dr3_rr_lyrae_classes
+    gaia_rr_lyrae_target_data_frame = gaia_variable_target_data_frame[
+        gaia_variable_target_data_frame['best_class_name'].isin(rr_lyrae_labels)]
     gaia_rr_lyrae_target_data_frame.to_csv('quick.csv')
+
     # gaia_rr_lyrae_target_data_frame = pd.read_csv('quick.csv')
 
     def light_curve_from_row(row: pd.Series) -> TessLightCurve:
@@ -175,15 +202,36 @@ def download_rr_lyrae_gaia_tess_metadata_csv():
         return row['light_curve'].tic_id
 
     gaia_rr_lyrae_target_data_frame['tic_id'] = gaia_rr_lyrae_target_data_frame.apply(tic_id_from_row, axis=1)
+    print(f'Before filtering None `tic_id`s: {gaia_rr_lyrae_target_data_frame.shape[0]}')
+    gaia_rr_lyrae_target_data_frame = gaia_rr_lyrae_target_data_frame[
+        ~(
+                (gaia_rr_lyrae_target_data_frame['tic_id'] is None) |
+                (gaia_rr_lyrae_target_data_frame['tic_id'].isna()) |
+                (gaia_rr_lyrae_target_data_frame['tic_id'] == 'None')
+        )
+    ]
+
+    print(f'After filtering None `tic_id`s: {gaia_rr_lyrae_target_data_frame.shape[0]}')
+    light_curves = list(gaia_rr_lyrae_target_data_frame['light_curve'].values)
+    TessLightCurve.load_tic_rows_from_mast_for_list(light_curves)
+    print(f'Before filtering missing TIC rows: {gaia_rr_lyrae_target_data_frame.shape[0]}')
+
+    def has_tic_row(row: pd.Series) -> bool:
+        return row['light_curve'].get_tic_row() is not MissingTicRow
+
+    gaia_rr_lyrae_target_data_frame = gaia_rr_lyrae_target_data_frame[
+        gaia_rr_lyrae_target_data_frame.apply(has_tic_row, axis=1)]
+    print(f'After filtering missing TIC rows: {gaia_rr_lyrae_target_data_frame.shape[0]}')
     gaia_rr_lyrae_target_data_frame['sky_coord'] = gaia_rr_lyrae_target_data_frame.apply(sky_coord_from_row, axis=1)
     gaia_rr_lyrae_target_data_frame['magnitude'] = gaia_rr_lyrae_target_data_frame.apply(magnitude_from_row, axis=1)
     gaia_rr_lyrae_target_data_frame.to_csv(gaia_rr_lyrae_targets_csv_path, index=False)
+
 
 def download_gaia_rr_lyrae_metadata_to_csv():
     Gaia.ROW_LIMIT = -1
     query_string = """
         SELECT *
-        FROM gaiadr2.vari_rrlyrae
+        FROM gaiadr3.vari_rrlyrae
         """
     gaia_rr_lyrae_metadata_csv_path = Path('data/variables/gaia_rr_lyrae_metadata.csv')
     gaia_rr_lyrae_metadata_job = Gaia.launch_job_async(query=query_string)
@@ -213,5 +261,6 @@ def download_tic_rows_for_gaia_rr_lyrae_source_ids():
 
 
 if __name__ == '__main__':
-    download_gcvs_metadata()
+    download_gaia_variable_targets_metadata_csv()
+    download_gaia_rr_lyrae_metadata_to_csv()
     download_rr_lyrae_gaia_tess_metadata_csv()
