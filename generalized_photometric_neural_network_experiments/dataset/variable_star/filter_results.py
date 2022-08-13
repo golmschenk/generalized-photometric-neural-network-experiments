@@ -2,6 +2,7 @@ import json
 from typing import Optional
 
 import lightkurve
+import numpy as np
 from astropy import units
 from astropy.coordinates import SkyCoord, Angle
 from pathlib import Path
@@ -10,23 +11,19 @@ import pandas as pd
 from astroquery.gaia import Gaia
 from retrying import retry
 
+from generalized_photometric_neural_network_experiments.dataset.variable_star.download_metadata import \
+    gaia_variable_targets_csv_path, download_gaia_variable_targets_metadata_csv, gaia_dr3_rr_lyrae_classes
 from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
 from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve, tess_pixel_angular_size
 from ramjet.photometric_database.tess_light_curve import CentroidAlgorithmFailedError
 
 
 class GaiaAwareTessFfiLightCurve(TessFfiLightCurve):
-    Gaia.ROW_LIMIT = -1
-    query_string = """
-    SELECT *
-    FROM gaiadr2.vari_classifier_result
-    INNER JOIN gaiadr2.gaia_source USING (source_id)
-    """
-    gaia_variable_target_job = Gaia.launch_job_async(query=query_string)
-    gaia_variable_target_result = gaia_variable_target_job.get_results()
-    gaia_variable_target_data_frame: pd.DataFrame = gaia_variable_target_result.to_pandas()
+    if not gaia_variable_targets_csv_path.exists():
+        download_gaia_variable_targets_metadata_csv()
+    gaia_variable_target_data_frame: pd.DataFrame = pd.read_csv(gaia_variable_targets_csv_path)
     gaia_rr_lyrae_target_data_frame = gaia_variable_target_data_frame[
-        gaia_variable_target_data_frame['best_class_name'].isin(['ARRD', 'RRC', 'RRAB', 'RRD'])]
+        gaia_variable_target_data_frame['best_class_name'].isin(gaia_dr3_rr_lyrae_classes)]
 
     def __init__(self):
         super().__init__()
@@ -68,6 +65,10 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
 
     gaia_rr_lyrae_minimum_period = 0.2009529790117998  # Minimum from the GAIA dataset.
     gaia_rr_lyrae_maximum_period = 0.9975636975622972  # Maximum from the GAIA dataset.
+    log_gaia_rr_lyrae_period_range = np.log(gaia_rr_lyrae_maximum_period) - np.log(gaia_rr_lyrae_minimum_period)
+    search_period_margin = np.exp(log_gaia_rr_lyrae_period_range * 0.05)
+    search_period_minimum = gaia_rr_lyrae_minimum_period - search_period_margin
+    search_period_maximum = gaia_rr_lyrae_maximum_period + search_period_margin
     results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
     print('Calculating variability...', flush=True)
     for index, row in results_data_frame.iterrows():
@@ -87,7 +88,7 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
         try:
             separation_to_variability_photometric_centroid = \
                 light_curve.estimate_angular_distance_to_variability_photometric_centroid_from_ffi(
-                    minimum_period=gaia_rr_lyrae_minimum_period, maximum_period=gaia_rr_lyrae_maximum_period)
+                    minimum_period=search_period_minimum, maximum_period=search_period_maximum)
         except (CentroidAlgorithmFailedError, lightkurve.search.SearchError, ValueError):
             results_data_frame.drop(index, inplace=True)
             dropped_by_centroid_offset_count += 1
@@ -173,6 +174,8 @@ def filter_rr_lyrae(results_data_frame: pd.DataFrame) -> pd.DataFrame:
         return fold_epoch
 
     results_data_frame['period'] = results_data_frame.apply(period_from_row, axis=1)
+    results_data_frame['period_in_gaia_range'] = ((results_data_frame['period'] > gaia_rr_lyrae_minimum_period) &
+                                                  (results_data_frame['period'] < gaia_rr_lyrae_maximum_period))
     results_data_frame['period_epoch'] = results_data_frame.apply(period_epoch_from_row, axis=1)
     results_data_frame.drop('sky_coord', axis=1, inplace=True)
     results_data_frame.drop('index', axis=1, inplace=True)
