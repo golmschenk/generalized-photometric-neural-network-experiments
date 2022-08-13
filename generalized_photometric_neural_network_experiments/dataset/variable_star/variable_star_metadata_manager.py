@@ -4,7 +4,8 @@ import pandas as pd
 from astroquery.vizier import Vizier
 
 from generalized_photometric_neural_network_experiments.dataset.variable_star.download_metadata import has_gcvs_type, \
-    GcvsColumnName, get_tic_id_for_gcvs_row, download_gaia_metadata_csv, get_tic_id_for_gaia_row
+    GcvsColumnName, get_tic_id_for_gcvs_row, download_gaia_variable_targets_metadata_csv, get_tic_id_for_gaia_row, \
+    gaia_dr3_rr_lyrae_classes
 from enum import Enum
 
 try:
@@ -74,11 +75,11 @@ class VariableStarMetadataManager:
         gaia_variable_targets_csv_path = Path('data/variables/gaia_variable_targets.csv')
         gaia_variable_targets_csv_path.parent.mkdir(exist_ok=True, parents=True)
         if not gaia_variable_targets_csv_path.exists():
-            download_gaia_metadata_csv()
+            download_gaia_variable_targets_metadata_csv()
         gaia_variable_targets_data_frame = pd.read_csv(gaia_variable_targets_csv_path, index_col=False)
         with metadatabase.atomic():
             for row_index, row in gaia_variable_targets_data_frame.iterrows():
-                rr_lyrae_labels = ['ARRD', 'RRC', 'RRAB', 'RRD']
+                rr_lyrae_labels = gaia_dr3_rr_lyrae_classes
                 is_lyrae = row['best_class_name'] in rr_lyrae_labels
                 if is_lyrae:
                     variable_type_name = VariableTypeName.RR_LYRAE.value
