@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 from astroquery.vizier import Vizier
+from pandarallel import pandarallel
 
 from generalized_photometric_neural_network_experiments.dataset.variable_star.download_metadata import has_gcvs_type, \
     GcvsColumnName, get_tic_id_for_gcvs_row, download_gaia_variable_targets_metadata_csv, get_tic_id_for_gaia_row, \
@@ -77,6 +78,14 @@ class VariableStarMetadataManager:
         if not gaia_variable_targets_csv_path.exists():
             download_gaia_variable_targets_metadata_csv()
         gaia_variable_targets_data_frame = pd.read_csv(gaia_variable_targets_csv_path, index_col=False)
+
+        def tic_id_from_row(row_: pd.Series) -> float:
+            return get_tic_id_for_gaia_row(row_)
+
+        pandarallel.initialize(progress_bar=True, nb_workers=50)
+        gaia_variable_targets_data_frame['tic_id'] = gaia_variable_targets_data_frame.parallel_apply(
+            tic_id_from_row, axis=1)
+
         with metadatabase.atomic():
             for row_index, row in gaia_variable_targets_data_frame.iterrows():
                 rr_lyrae_labels = gaia_dr3_rr_lyrae_classes
@@ -85,7 +94,7 @@ class VariableStarMetadataManager:
                     variable_type_name = VariableTypeName.RR_LYRAE.value
                 else:
                     variable_type_name = VariableTypeName.OTHER.value
-                tic_id = get_tic_id_for_gaia_row(row)
+                tic_id = row['tic_id']
                 if tic_id is None:
                     continue
                 row = VariableStarMetadata(tic_id=tic_id, variable_type_name=variable_type_name)
