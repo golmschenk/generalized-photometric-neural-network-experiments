@@ -21,7 +21,7 @@ try:
 except ImportError:
     from backports.strenum import StrEnum
 
-gaia_variable_targets_csv_path = Path('data/variables/gaia_variable_targets2.csv')
+gaia_variable_targets_csv_path = Path('data/variables/gaia_variable_targets.csv')
 gaia_dr2_rr_lyrae_classes = ['ARRD', 'RRC', 'RRAB', 'RRD']
 gaia_dr3_rr_lyrae_classes = ['RR']
 gaia_credential_path = Path('gaia_credentials_file.txt')
@@ -160,8 +160,7 @@ def download_gaia_variable_targets_metadata_csv():
         print(f'Query {query_number}: Obtained {gaia_variable_target_data_frame.shape[0]} rows.')
         if gaia_variable_target_data_frame.shape[0] == 0:
             break
-        gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, index=False)
-        gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, mode='a',
+        gaia_variable_target_data_frame.to_csv(gaia_variable_targets_csv_path, mode='a', index=False,
                                                header=not gaia_variable_targets_csv_path.exists())
         highest_source_id_collected = gaia_variable_target_data_frame['source_id'].iloc[-1]
         query_number += 1
