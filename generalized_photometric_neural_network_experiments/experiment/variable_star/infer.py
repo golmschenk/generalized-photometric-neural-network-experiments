@@ -7,10 +7,10 @@ from pathlib import Path
 
 from generalized_photometric_neural_network_experiments.dataset.variable_star.variable_star_databases import \
     RrLyraeFfiDatabase
-from ramjet.models.hades import FfiHades
+from ramjet.models.hades import FfiHades, HadesRegularResizedForFfi
 from ramjet.trial import infer
 
-log_name = 'logs/FfiHades_no_bn_2022_03_03_00_28_19'
+log_name = 'logs/HadesRegularResizedForFfi_DR3P_renorm_amsgrad_2022_08_20_23_43_24'
 saved_log_directory = Path(f'{log_name}')
 datetime_string = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
@@ -19,7 +19,7 @@ database = RrLyraeFfiDatabase()
 inference_dataset = database.generate_inference_dataset()
 
 print('Loading model...', flush=True)
-model = FfiHades()
+model = HadesRegularResizedForFfi()
 model.load_weights(str(saved_log_directory.joinpath('best_validation_model.ckpt'))).expect_partial()
 
 print('Inferring...', flush=True)

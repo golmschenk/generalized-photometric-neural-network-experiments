@@ -34,6 +34,7 @@ class NonRrLyraeVariableFfiLightCurveCollection(TessFfiLightCurveCollection):
         query = query.where(TessFfiLightCurveMetadata.tic_id.in_(non_rr_lyrae_tic_id_query))
         return query
 
+
 class NonRrLyraeFfiLightCurveCollection(TessFfiLightCurveCollection):
     def __init__(self, dataset_splits: Union[List[int], None] = None,
                  magnitude_range: (Union[float, None], Union[float, None]) = (None, None)):

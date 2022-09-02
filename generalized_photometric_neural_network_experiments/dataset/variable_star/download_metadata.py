@@ -166,6 +166,7 @@ def download_gaia_variable_targets_metadata_csv():
         query_number += 1
 
 
+# TODO: Look into deleting this. I don't believe the output of this one is being used anywhere. Which is good, because I believe it's not loading the entire dataset (3M row limit applies).
 def download_rr_lyrae_gaia_tess_metadata_csv():
     Gaia.ROW_LIMIT = -1
     query_string = """
@@ -261,5 +262,4 @@ def download_tic_rows_for_gaia_rr_lyrae_source_ids():
 
 if __name__ == '__main__':
     download_gaia_variable_targets_metadata_csv()
-    download_gaia_rr_lyrae_metadata_to_csv()
-    download_rr_lyrae_gaia_tess_metadata_csv()
+    # download_gaia_rr_lyrae_metadata_to_csv()
