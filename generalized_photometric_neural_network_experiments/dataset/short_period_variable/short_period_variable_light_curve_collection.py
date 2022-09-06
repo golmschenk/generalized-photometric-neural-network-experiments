@@ -7,7 +7,12 @@ import numpy as np
 from ramjet.photometric_database.derived.tess_ffi_light_curve_collection import TessFfiLightCurveCollection
 
 
-class SyntheticShortPeriodLightCurveCollection(TessFfiLightCurveCollection):
+class SineWaveLightCurveCollection(TessFfiLightCurveCollection):
+    def __init__(self, min_period__days: float, max_period__days: float):
+        super().__init__()
+        self.min_period__days: float = min_period__days
+        self.max_period__days: float = max_period__days
+
     def get_paths(self) -> Iterable[Path]:
         return [Path('')]
 
@@ -18,11 +23,8 @@ class SyntheticShortPeriodLightCurveCollection(TessFfiLightCurveCollection):
         :param path: empty path
         :return: The times and the magnifications of the signal.
         """
-        max_period__hours = 5
-        min_period__hours = 0.25
-        max_period__days = max_period__hours / 24
-        min_period__days = min_period__hours / 24
-        period__days = np.random.uniform(low=min_period__days, high=max_period__days)
+
+        period__days = np.random.uniform(low=self.min_period__days, high=self.max_period__days)
         length__days = 30
         light_curve_length = length__days * 24 * 4  # 15 minute intervals.
         periods_to_produce = length__days / period__days
