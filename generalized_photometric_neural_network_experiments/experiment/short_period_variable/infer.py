@@ -14,7 +14,7 @@ from generalized_photometric_neural_network_experiments.dataset.variable_star.va
 from ramjet.models.hades import FfiHades, HadesRegularResizedForFfi
 from ramjet.trial import infer
 
-log_name = 'logs/trained_model'
+log_name = 'logs/FfiHades_2022_09_06_21_23_14'
 saved_log_directory = Path(f'{log_name}')
 datetime_string = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
@@ -23,7 +23,7 @@ database = ShortPeriodVariableDatabase()
 inference_dataset = database.generate_inference_dataset()
 
 print('Loading model...', flush=True)
-model = HadesRegularResizedForFfi()
+model = FfiHades()
 model.load_weights(str(saved_log_directory.joinpath('best_validation_model.ckpt'))).expect_partial()
 
 print('Inferring...', flush=True)
