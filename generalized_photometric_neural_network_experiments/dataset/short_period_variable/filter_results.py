@@ -58,7 +58,7 @@ def filter_results(results_data_frame: pd.DataFrame) -> pd.DataFrame:
         light_curve_path = Path(row['light_curve_path'])
         # Hack to fix changes to Adapt.
         old_adapt_path = Path('/att/gpfsfs/home/golmsche')
-        new_adapt_path = Path('/adapt/nobackup/people/golmsche')
+        new_adapt_path = Path('/explore/nobackup/people/golmsche')
         if old_adapt_path in light_curve_path.parents:
             sub_path = light_curve_path.relative_to(old_adapt_path)
             light_curve_path = new_adapt_path.joinpath(sub_path)
@@ -74,8 +74,9 @@ def filter_results(results_data_frame: pd.DataFrame) -> pd.DataFrame:
             maximum_time = np.nanmax(light_curve.times)
             time_differences = np.diff(light_curve.times)
             minimum_time_step = np.nanmin(time_differences)
-            period_upper_limit = maximum_time - minimum_time
-            period_lower_limit = minimum_time_step / 2.1
+            # period_upper_limit = maximum_time - minimum_time
+            period_upper_limit = 10
+            period_lower_limit = 0.0208333
             separation_to_variability_photometric_centroid = \
                 light_curve.estimate_angular_distance_to_variability_photometric_centroid_from_ffi(
                     minimum_period=period_lower_limit, maximum_period=period_upper_limit)
@@ -172,10 +173,10 @@ def filter_results(results_data_frame: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == '__main__':
-    infer_results_path = Path('/adapt/nobackup/people/golmsche/generalized-photometric-neural-network-experiments/logs/'
+    infer_results_path = Path('/explore/nobackup/people/golmsche/generalized-photometric-neural-network-experiments/logs/'
                               'FfiHades_2022_09_06_21_23_14/infer_results_2022-09-07-15-21-50.csv')
     filtered_results_path = infer_results_path.parent.joinpath(f'filtered_{infer_results_path.name}')
     results_data_frame = pd.read_csv(infer_results_path)
-    results_data_frame = results_data_frame.head(1_000)
+    results_data_frame = results_data_frame.head(30_000)
     results_data_frame = filter_results(results_data_frame)
     results_data_frame.to_csv(filtered_results_path, index=False)

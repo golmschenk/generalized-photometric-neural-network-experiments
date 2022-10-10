@@ -21,7 +21,7 @@ def train():
     print('Starting training process...', flush=True)
     database = ShortPeriodVariableDatabase()
     model = FfiHades()
-    trial_name = f'{type(model).__name__}'
+    trial_name = f'{type(model).__name__}_mixed_sine_sawtooth'
     epochs_to_run = 1000
     logs_directory = Path('logs')
     logging_callbacks = create_logging_callbacks(logs_directory, trial_name, database,
