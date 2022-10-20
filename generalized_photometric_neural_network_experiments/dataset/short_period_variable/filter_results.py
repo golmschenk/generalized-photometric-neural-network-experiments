@@ -24,7 +24,6 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
     def get_variability_phase_folding_parameters_and_folding_lightkurve_light_curves(
             self, minimum_period: Optional[float] = None, maximum_period: Optional[float] = None):
         median_time_step = np.median(np.diff(self.times[~np.isnan(self.times)]))
-        time_bin_size = median_time_step
         lightkurve_light_curve = self.to_lightkurve()
         inlier_lightkurve_light_curve = lightkurve_light_curve.remove_outliers(sigma=3)
         periodogram = LombScarglePeriodogram.from_lightcurve(inlier_lightkurve_light_curve, oversample_factor=3,
@@ -38,6 +37,7 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
         longest_period_near_max_power = periods__days[longest_period_index_near_max_power]
         folded_lightkurve_light_curve = inlier_lightkurve_light_curve.fold(period=longest_period_near_max_power,
                                                                            wrap_phase=longest_period_near_max_power)
+        time_bin_size = periods__days / 25
         binned_folded_lightkurve_light_curve = folded_lightkurve_light_curve.bin(time_bin_size=time_bin_size,
                                                                                  aggregate_func=np.nanmedian)
         minimum_bin_index = np.nanargmin(binned_folded_lightkurve_light_curve.flux.value)
