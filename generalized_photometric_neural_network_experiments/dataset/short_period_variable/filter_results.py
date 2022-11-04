@@ -32,7 +32,8 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
         periods__days = periodogram.period.to(units.d).value
         powers = periodogram.power.value
         longest_period_index_near_max_power = np.argwhere(powers > 0.9 * periodogram.max_power)[0, -1]
-        while powers[longest_period_index_near_max_power + 1] > powers[longest_period_index_near_max_power]:
+        while (powers[longest_period_index_near_max_power + 1] > powers[longest_period_index_near_max_power] and
+               longest_period_index_near_max_power < len(powers) - 1):
             longest_period_index_near_max_power += 1
         longest_period_near_max_power = periods__days[longest_period_index_near_max_power]
         folded_lightkurve_light_curve = inlier_lightkurve_light_curve.fold(period=longest_period_near_max_power,
