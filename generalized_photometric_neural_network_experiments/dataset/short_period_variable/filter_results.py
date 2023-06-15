@@ -18,6 +18,9 @@ from ramjet.data_interface.tess_data_interface import is_common_mast_connection_
 from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve, tess_pixel_angular_size
 from ramjet.photometric_database.tess_light_curve import CentroidAlgorithmFailedError
 
+import lightkurve as lk
+lk.conf.cache_dir = '/explore/nobackup/people/golmsche/.lightkurve'
+
 
 class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
     # TODO: This is a bit too much of a hack that relies on overriding a random part of the regular light curve methods.
@@ -32,13 +35,15 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
         periods__days = periodogram.period.to(units.d).value
         powers = periodogram.power.value
         longest_period_index_near_max_power = np.argwhere(powers > 0.9 * periodogram.max_power)[0, -1]
-        while (powers[longest_period_index_near_max_power + 1] > powers[longest_period_index_near_max_power] and
-               longest_period_index_near_max_power < len(powers) - 1):
+        while (longest_period_index_near_max_power < len(powers) - 1 and
+                powers[longest_period_index_near_max_power + 1] > powers[longest_period_index_near_max_power]):
             longest_period_index_near_max_power += 1
         longest_period_near_max_power = periods__days[longest_period_index_near_max_power]
+        self._variability_power = powers[longest_period_index_near_max_power]
         folded_lightkurve_light_curve = inlier_lightkurve_light_curve.fold(period=longest_period_near_max_power,
                                                                            wrap_phase=longest_period_near_max_power)
-        time_bin_size = periods__days / 25
+        fold_period = folded_lightkurve_light_curve.period.value
+        time_bin_size = fold_period / 25
         binned_folded_lightkurve_light_curve = folded_lightkurve_light_curve.bin(time_bin_size=time_bin_size,
                                                                                  aggregate_func=np.nanmedian)
         minimum_bin_index = np.nanargmin(binned_folded_lightkurve_light_curve.flux.value)
@@ -50,134 +55,186 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
                 inlier_lightkurve_light_curve, periodogram, folded_lightkurve_light_curve)
 
 
-def filter_results(results_data_frame: pd.DataFrame) -> pd.DataFrame:
-    dropped_by_known_count = 0
-    dropped_by_centroid_offset_count = 0
-    print('Loading light curves...', flush=True)
+class FilterProcesser:
+    def __init__(self):
+        self.dropped_by_known_count = 0
+        self.dropped_by_centroid_offset_count = 0
+        self.temporary_directory = Path('filter_temporary')
+        self.tic_id_duplicated_count = None
+        self.tic_id_deduplicated_count = None
+        self.duplicated_count = None
+        self.dropped_due_to_brighter_target_nearby = 0
 
-    def light_curve_from_row(row: pd.Series) -> TessFfiLightCurve:
-        light_curve_path = Path(row['light_curve_path'])
-        # Hack to fix changes to Adapt.
-        old_adapt_path = Path('/att/gpfsfs/home/golmsche')
-        new_adapt_path = Path('/explore/nobackup/people/golmsche')
-        if old_adapt_path in light_curve_path.parents:
-            sub_path = light_curve_path.relative_to(old_adapt_path)
-            light_curve_path = new_adapt_path.joinpath(sub_path)
-        return ShortPeriodTessFfiLightCurve.from_path(light_curve_path)
+    def filter_results(self, results_data_frame: pd.DataFrame) -> pd.DataFrame:
+        temporary_file0 = self.temporary_directory.joinpath('temporary_file0.pkl')
+        if not temporary_file0.exists():
+            self.add_light_curves_to_data_frame(results_data_frame)
+            results_data_frame.to_pickle(temporary_file0)
 
-    results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
-    print('Calculating variability...', flush=True)
-    for index, row in results_data_frame.iterrows():
-        print(index, end='\r', flush=True)
-        light_curve = row['light_curve']
-        try:
-            minimum_time = np.nanmin(light_curve.times)
-            maximum_time = np.nanmax(light_curve.times)
-            time_differences = np.diff(light_curve.times)
-            minimum_time_step = np.nanmin(time_differences)
-            # period_upper_limit = maximum_time - minimum_time
-            period_upper_limit = 10
-            period_lower_limit = 0.0208333
-            separation_to_variability_photometric_centroid = \
-                light_curve.estimate_angular_distance_to_variability_photometric_centroid_from_ffi(
-                    minimum_period=period_lower_limit, maximum_period=period_upper_limit)
-        except (CentroidAlgorithmFailedError, lightkurve.search.SearchError, ValueError):
-            results_data_frame.drop(index, inplace=True)
-            dropped_by_centroid_offset_count += 1
-            continue
-        if separation_to_variability_photometric_centroid > tess_pixel_angular_size:
-            results_data_frame.drop(index, inplace=True)
-            dropped_by_centroid_offset_count += 1
-            continue
+        temporary_file1 = self.temporary_directory.joinpath('temporary_file1.pkl')
+        if not temporary_file1.exists():
+            self.check_varability(results_data_frame)
+            results_data_frame.to_pickle(temporary_file1)
 
-    print('Adding additional columns...', flush=True)
+        temporary_file2 = self.temporary_directory.joinpath('temporary_file2.pkl')
+        if not temporary_file2.exists():
+            results_data_frame = self.add_additional_columns(results_data_frame)
+            results_data_frame.to_pickle(temporary_file2)
 
-    def sky_coord_from_row(row: pd.Series) -> SkyCoord:
-        return row['light_curve'].sky_coord
+        temporary_file3 = self.temporary_directory.joinpath('temporary_file3.pkl')
+        if not temporary_file3.exists():
+            self.remove_duplicates_by_separation(results_data_frame)
+            results_data_frame.to_pickle(temporary_file3)
 
-    def magnitude_from_row(row: pd.Series) -> float:
-        return row['light_curve'].tess_magnitude
+        temporary_file4 = self.temporary_directory.joinpath('temporary_file4.pkl')
+        if not temporary_file4.exists():
+            self.clean_up(results_data_frame)
+            results_data_frame.to_pickle(temporary_file4)
 
-    def tic_id_from_row(row: pd.Series) -> float:
-        return row['light_curve'].tic_id
+        return results_data_frame
 
-    def sector_from_row(row: pd.Series) -> float:
-        return row['light_curve'].sector
+    def clean_up(self, results_data_frame):
+        print(f'Dropped as known: {self.dropped_by_known_count}')
+        print(f'Dropped as centroid offset: {self.dropped_by_centroid_offset_count}')
+        print(f'Dropped as TIC ID duplicates: {self.tic_id_duplicated_count - self.tic_id_deduplicated_count}')
+        print(f'Dropped as position duplicates: {self.duplicated_count - self.deduplicated_count}')
+        print(f'Dropped due to brighter target nearby: {self.dropped_due_to_brighter_target_nearby}')
 
-    results_data_frame['tic_id'] = results_data_frame.apply(tic_id_from_row, axis=1)
-    results_data_frame['sector'] = results_data_frame.apply(sector_from_row, axis=1)
-    tic_id_duplicated_count = results_data_frame.shape[0]
-    results_data_frame = results_data_frame.drop_duplicates(['tic_id'])
-    tic_id_deduplicated_count = results_data_frame.shape[0]
-    results_data_frame['sky_coord'] = results_data_frame.apply(sky_coord_from_row, axis=1)
-    results_data_frame['magnitude'] = results_data_frame.apply(magnitude_from_row, axis=1)
-    duplicated_count = results_data_frame.shape[0]
-    dropped_due_to_brighter_target_nearby = 0
-    print('Comparing separations...', flush=True)
-    for index, row in results_data_frame.iterrows():
-        print(index, end='\r', flush=True)
-        data_frame_excluding_row = results_data_frame.drop(index)
+        def ra_from_row(row: pd.Series) -> float:
+            return row['sky_coord'].ra
 
-        def separation_to_current(other_row: pd.Series) -> Angle:
-            return row['sky_coord'].separation(other_row['sky_coord'])
+        results_data_frame['ra'] = results_data_frame.apply(ra_from_row, axis=1)
 
-        data_frame_excluding_row['separation'] = data_frame_excluding_row.apply(separation_to_current, axis=1)
+        def dec_from_row(row: pd.Series) -> float:
+            return row['sky_coord'].dec
 
-        def separation_less_than_tess_pixel(row: pd.Series) -> bool:
-            return row['separation'] < tess_pixel_angular_size
+        results_data_frame['dec'] = results_data_frame.apply(dec_from_row, axis=1)
 
-        competing_data_frame = data_frame_excluding_row[
-            data_frame_excluding_row.apply(separation_less_than_tess_pixel, axis=1)]
-        if competing_data_frame.shape[0] == 0:
-            continue
-        if row['magnitude'] is None:
-            results_data_frame.drop(index, inplace=True)
-            dropped_due_to_brighter_target_nearby += 1
-            continue
-        if (competing_data_frame[competing_data_frame['magnitude'] <= row['magnitude']]).shape[0] > 0:
-            results_data_frame.drop(index, inplace=True)
-            dropped_due_to_brighter_target_nearby += 1
-            continue
-    deduplicated_count = results_data_frame.shape[0]
-    print(f'Dropped as known: {dropped_by_known_count}')
-    print(f'Dropped as centroid offset: {dropped_by_centroid_offset_count}')
-    print(f'Dropped as TIC ID duplicates: {tic_id_duplicated_count - tic_id_deduplicated_count}')
-    print(f'Dropped as position duplicates: {duplicated_count - deduplicated_count}')
-    print(f'Dropped due to brighter target nearby: {dropped_due_to_brighter_target_nearby}')
+        def period_from_row(row: pd.Series) -> float:
+            light_curve_ = row['light_curve']
+            fold_period = light_curve_.variability_period
+            return fold_period
 
-    def ra_from_row(row: pd.Series) -> float:
-        return row['sky_coord'].ra
+        def power_from_row(row: pd.Series) -> float:
+            light_curve_ = row['light_curve']
+            fold_period = light_curve_._variability_power
+            return fold_period
 
-    results_data_frame['ra'] = results_data_frame.apply(ra_from_row, axis=1)
+        def period_epoch_from_row(row: pd.Series) -> float:
+            light_curve_ = row['light_curve']
+            fold_epoch = light_curve_.variability_period_epoch
+            return fold_epoch
 
-    def dec_from_row(row: pd.Series) -> float:
-        return row['sky_coord'].dec
+        results_data_frame['period'] = results_data_frame.apply(period_from_row, axis=1)
+        results_data_frame['power'] = results_data_frame.apply(power_from_row, axis=1)
+        results_data_frame['period_epoch'] = results_data_frame.apply(period_epoch_from_row, axis=1)
+        results_data_frame.drop('sky_coord', axis=1, inplace=True)
+        results_data_frame.drop('index', axis=1, inplace=True)
+        results_data_frame.drop('light_curve', axis=1, inplace=True)
 
-    results_data_frame['dec'] = results_data_frame.apply(dec_from_row, axis=1)
+    def remove_duplicates_by_separation(self, results_data_frame):
+        print('Comparing separations...', flush=True)
+        for index, row in results_data_frame.iterrows():
+            print(index, end='\r', flush=True)
+            data_frame_excluding_row = results_data_frame.drop(index)
 
-    def period_from_row(row: pd.Series) -> float:
-        light_curve_ = row['light_curve']
-        fold_period = light_curve_.variability_period
-        return fold_period
+            def separation_to_current(other_row: pd.Series) -> Angle:
+                return row['sky_coord'].separation(other_row['sky_coord'])
 
-    def period_epoch_from_row(row: pd.Series) -> float:
-        light_curve_ = row['light_curve']
-        fold_epoch = light_curve_.variability_period_epoch
-        return fold_epoch
+            data_frame_excluding_row['separation'] = data_frame_excluding_row.apply(separation_to_current, axis=1)
 
-    results_data_frame['period'] = results_data_frame.apply(period_from_row, axis=1)
-    results_data_frame['period_epoch'] = results_data_frame.apply(period_epoch_from_row, axis=1)
-    results_data_frame.drop('sky_coord', axis=1, inplace=True)
-    results_data_frame.drop('index', axis=1, inplace=True)
-    results_data_frame.drop('light_curve', axis=1, inplace=True)
-    return results_data_frame
+            def separation_less_than_tess_pixel(row: pd.Series) -> bool:
+                return row['separation'] < tess_pixel_angular_size
+
+            competing_data_frame = data_frame_excluding_row[
+                data_frame_excluding_row.apply(separation_less_than_tess_pixel, axis=1)]
+            if competing_data_frame.shape[0] == 0:
+                continue
+            if row['magnitude'] is None:
+                results_data_frame.drop(index, inplace=True)
+                self.dropped_due_to_brighter_target_nearby += 1
+                continue
+            if (competing_data_frame[competing_data_frame['magnitude'] <= row['magnitude']]).shape[0] > 0:
+                results_data_frame.drop(index, inplace=True)
+                self.dropped_due_to_brighter_target_nearby += 1
+                continue
+        self.deduplicated_count = results_data_frame.shape[0]
+
+    def add_additional_columns(self, results_data_frame):
+        print('Adding additional columns...', flush=True)
+
+        def sky_coord_from_row(row: pd.Series) -> SkyCoord:
+            return row['light_curve'].sky_coord
+
+        def magnitude_from_row(row: pd.Series) -> float:
+            return row['light_curve'].tess_magnitude
+
+        def tic_id_from_row(row: pd.Series) -> float:
+            return row['light_curve'].tic_id
+
+        def sector_from_row(row: pd.Series) -> float:
+            return row['light_curve'].sector
+
+        results_data_frame['tic_id'] = results_data_frame.apply(tic_id_from_row, axis=1)
+        results_data_frame['sector'] = results_data_frame.apply(sector_from_row, axis=1)
+        self.tic_id_duplicated_count = results_data_frame.shape[0]
+        results_data_frame = results_data_frame.drop_duplicates(['tic_id'])
+        self.tic_id_deduplicated_count = results_data_frame.shape[0]
+        results_data_frame['sky_coord'] = results_data_frame.apply(sky_coord_from_row, axis=1)
+        results_data_frame['magnitude'] = results_data_frame.apply(magnitude_from_row, axis=1)
+        self.duplicated_count = results_data_frame.shape[0]
+        return results_data_frame
+
+    def check_varability(self, results_data_frame):
+        print('Calculating variability...', flush=True)
+        for index, row in results_data_frame.iterrows():
+            print(
+                f'Index: {index}, Dropped: {self.dropped_by_centroid_offset_count}, Size: {results_data_frame.shape[0]}',
+                flush=True)
+            light_curve = row['light_curve']
+            try:
+                minimum_time = np.nanmin(light_curve.times)
+                maximum_time = np.nanmax(light_curve.times)
+                time_differences = np.diff(light_curve.times)
+                minimum_time_step = np.nanmin(time_differences)
+                # period_upper_limit = maximum_time - minimum_time
+                period_upper_limit = 10
+                period_lower_limit = 0.0208333
+                separation_to_variability_photometric_centroid = \
+                    light_curve.estimate_angular_distance_to_variability_photometric_centroid_from_ffi(
+                        minimum_period=period_lower_limit, maximum_period=period_upper_limit)
+            except (CentroidAlgorithmFailedError, lightkurve.search.SearchError) as error:
+                results_data_frame.drop(index, inplace=True)
+                self.dropped_by_centroid_offset_count += 1
+                continue
+            if separation_to_variability_photometric_centroid > tess_pixel_angular_size:
+                results_data_frame.drop(index, inplace=True)
+                self.dropped_by_centroid_offset_count += 1
+                continue
+
+    def add_light_curves_to_data_frame(self, results_data_frame):
+        print('Loading light curves...', flush=True)
+        def light_curve_from_row(row: pd.Series) -> TessFfiLightCurve:
+            light_curve_path = Path(row['light_curve_path'])
+            # Hack to fix changes to Adapt.
+            old_adapt_path = Path('/att/gpfsfs/home/golmsche')
+            new_adapt_path = Path('/explore/nobackup/people/golmsche')
+            if old_adapt_path in light_curve_path.parents:
+                sub_path = light_curve_path.relative_to(old_adapt_path)
+                light_curve_path = new_adapt_path.joinpath(sub_path)
+            return ShortPeriodTessFfiLightCurve.from_path(light_curve_path)
+
+        results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
 
 
 if __name__ == '__main__':
-    infer_results_path = Path('/explore/nobackup/people/golmsche/generalized-photometric-neural-network-experiments/logs/'
-                              'FfiHades_2022_09_06_21_23_14/infer_results_2022-09-07-15-21-50.csv')
+    infer_results_path = Path('/explore/nobackup/people/golmsche/generalized-photometric-neural-network-experiments/'
+                              'logs/FfiHades_mixed_sine_sawtooth_2022_10_07_17_03_23/'
+                              'infer_results_2022-12-11-19-35-34.csv')
     filtered_results_path = infer_results_path.parent.joinpath(f'filtered_{infer_results_path.name}')
     results_data_frame = pd.read_csv(infer_results_path)
-    results_data_frame = results_data_frame.head(30_000)
-    results_data_frame = filter_results(results_data_frame)
+    results_data_frame = results_data_frame.head(50_000)
+    # results_data_frame = results_data_frame.head(30)
+    filter_processor = FilterProcesser()
+    results_data_frame = filter_processor.filter_results(results_data_frame)
     results_data_frame.to_csv(filtered_results_path, index=False)
