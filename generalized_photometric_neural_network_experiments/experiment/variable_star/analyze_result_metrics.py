@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from bokeh.io import show, export_svg
 from bokeh.palettes import Category10
-from bokeh.plotting import Figure
+from bokeh.plotting import figure as Figure
 from cairosvg import svg2png
 
 

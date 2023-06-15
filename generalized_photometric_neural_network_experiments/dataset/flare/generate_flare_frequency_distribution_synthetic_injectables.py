@@ -17,7 +17,7 @@ except ImportError:
 from bokeh.io import show
 from bokeh.models import Column, Row
 from bokeh.palettes import Blues, Category10
-from bokeh.plotting import Figure
+from bokeh.plotting import figure as Figure
 from bs4 import BeautifulSoup
 from astropy.io import ascii
 import scipy.stats
@@ -341,7 +341,7 @@ def generate_injectable_flare_frequency_distributions():
     injectable_ffd_meta_data_data_frame = pd.DataFrame(injectable_ffd_meta_data_dictionaries)
     number_of_splits = 10
     split_size = math.ceil(number_of_injectables_to_produce / number_of_splits)
-    split_array = np.zeros(shape=[number_of_injectables_to_produce], dtype=np.int32)
+    split_array = np.zeros(shape=[number_of_injectables_to_produce], dtype=int)
     for split_index in range(number_of_splits):
         split_start_index = split_size * split_index
         split_end_index = split_size * (split_index + 1)

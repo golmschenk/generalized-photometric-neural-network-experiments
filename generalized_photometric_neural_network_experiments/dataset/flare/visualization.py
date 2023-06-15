@@ -14,7 +14,7 @@ import pandas as pd
 from bokeh.io import show, save
 from bokeh.models import ColumnDataSource, PrintfTickFormatter, Row, FactorRange, Column, LabelSet
 from bokeh.palettes import Category10, Set2, Set1, Dark2, Accent, Category20
-from bokeh.plotting import Figure
+from bokeh.plotting import figure as Figure
 from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
 

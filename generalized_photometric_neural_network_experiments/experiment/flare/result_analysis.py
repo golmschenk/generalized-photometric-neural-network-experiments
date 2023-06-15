@@ -4,7 +4,7 @@ from bokeh.colors import Color
 from bokeh.io import show
 from bokeh.models import Row, ColumnDataSource
 from bokeh.palettes import Category10
-from bokeh.plotting import Figure
+from bokeh.plotting import figure as Figure
 from pathlib import Path
 import tensorflow as tf
 import pandas as pd

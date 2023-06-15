@@ -9,7 +9,7 @@ from astroquery.vizier import Vizier
 from astropy import units
 from bokeh.io import show
 from bokeh.palettes import Category10
-from bokeh.plotting import Figure
+from bokeh.plotting import figure as Figure
 from astroquery.gaia import Gaia
 from retrying import retry
 

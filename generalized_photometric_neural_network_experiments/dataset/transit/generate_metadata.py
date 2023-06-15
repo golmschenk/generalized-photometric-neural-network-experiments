@@ -69,7 +69,7 @@ def split_tic_id_and_sector_list_equally(tic_id_and_sector_list: List[Tuple[int,
     :return: The list of splits, each of which is a list of TIC ID and sector tuples.
     """
     tic_id_sorted_count_dictionary = get_tic_id_sorted_count_dictionary(tic_id_and_sector_list)
-    split_counts = np.zeros(shape=number_of_splits, dtype=np.int32)
+    split_counts = np.zeros(shape=number_of_splits, dtype=int)
     splits: List[List[Tuple[int, int]]] = [[] for _ in range(number_of_splits)]
     for tic_id_to_find in tic_id_sorted_count_dictionary.keys():
         smallest_split_index = np.argmin(split_counts)
