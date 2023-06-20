@@ -186,8 +186,17 @@ class FilterProcesser:
         return results_data_frame
 
     def check_varability(self, results_data_frame):
+        temporary_file0a = self.temporary_directory.joinpath('temporary_file0a.pkl')
+        if not temporary_file0a.exists():
+            results_data_frame.to_pickle(temporary_file0a)
+        results_data_frame['variability_processed'] = False
         print('Calculating variability...', flush=True)
         for index, row in results_data_frame.iterrows():
+            if row['variability_processed']:
+                continue
+            if index % 300 == 0:
+                results_data_frame.to_pickle(temporary_file0a)
+            results_data_frame.loc[index, 'variability_processed'] = True
             print(
                 f'Index: {index}, Dropped: {self.dropped_by_centroid_offset_count}, Size: {results_data_frame.shape[0]}',
                 flush=True)
