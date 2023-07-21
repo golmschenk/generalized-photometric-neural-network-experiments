@@ -16,9 +16,10 @@ from generalized_photometric_neural_network_experiments.dataset.variable_star.do
     gaia_variable_targets_csv_path, download_gaia_variable_targets_metadata_csv, gaia_dr3_rr_lyrae_classes
 from ramjet.data_interface.tess_data_interface import is_common_mast_connection_error
 from ramjet.photometric_database.tess_ffi_light_curve import TessFfiLightCurve, tess_pixel_angular_size
-from ramjet.photometric_database.tess_light_curve import CentroidAlgorithmFailedError
+from ramjet.photometric_database.tess_light_curve import CentroidAlgorithmFailedError, TessLightCurve
 
 import lightkurve as lk
+
 lk.conf.cache_dir = '/explore/nobackup/people/golmsche/.lightkurve'
 
 
@@ -36,7 +37,7 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
         powers = periodogram.power.value
         longest_period_index_near_max_power = np.argwhere(powers > 0.9 * periodogram.max_power)[0, -1]
         while (longest_period_index_near_max_power < len(powers) - 1 and
-                powers[longest_period_index_near_max_power + 1] > powers[longest_period_index_near_max_power]):
+               powers[longest_period_index_near_max_power + 1] > powers[longest_period_index_near_max_power]):
             longest_period_index_near_max_power += 1
         longest_period_near_max_power = periods__days[longest_period_index_near_max_power]
         self._variability_power = powers[longest_period_index_near_max_power]
@@ -70,26 +71,41 @@ class FilterProcesser:
         if not temporary_file0.exists():
             self.add_light_curves_to_data_frame(results_data_frame)
             results_data_frame.to_pickle(temporary_file0)
+        else:
+            print(f'Loading from {temporary_file0}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file0)
 
         temporary_file1 = self.temporary_directory.joinpath('temporary_file1.pkl')
         if not temporary_file1.exists():
             self.check_varability(results_data_frame)
             results_data_frame.to_pickle(temporary_file1)
+        else:
+            print(f'Loading from {temporary_file1}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file1)
 
         temporary_file2 = self.temporary_directory.joinpath('temporary_file2.pkl')
         if not temporary_file2.exists():
             results_data_frame = self.add_additional_columns(results_data_frame)
             results_data_frame.to_pickle(temporary_file2)
+        else:
+            print(f'Loading from {temporary_file2}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file2)
 
         temporary_file3 = self.temporary_directory.joinpath('temporary_file3.pkl')
         if not temporary_file3.exists():
             self.remove_duplicates_by_separation(results_data_frame)
             results_data_frame.to_pickle(temporary_file3)
+        else:
+            print(f'Loading from {temporary_file3}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file3)
 
         temporary_file4 = self.temporary_directory.joinpath('temporary_file4.pkl')
         if not temporary_file4.exists():
             self.clean_up(results_data_frame)
             results_data_frame.to_pickle(temporary_file4)
+        else:
+            print(f'Loading from {temporary_file4}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file4)
 
         return results_data_frame
 
@@ -134,8 +150,11 @@ class FilterProcesser:
 
     def remove_duplicates_by_separation(self, results_data_frame):
         print('Comparing separations...', flush=True)
+        new_data_frame = results_data_frame.iloc[:0, :].copy()
         for index, row in results_data_frame.iterrows():
-            print(index, end='\r', flush=True)
+            if index not in results_data_frame.index:
+                continue
+            print(f'index: {index}, size: {results_data_frame.shape[0]}', end='\r', flush=True)
             data_frame_excluding_row = results_data_frame.drop(index)
 
             def separation_to_current(other_row: pd.Series) -> Angle:
@@ -149,6 +168,8 @@ class FilterProcesser:
             competing_data_frame = data_frame_excluding_row[
                 data_frame_excluding_row.apply(separation_less_than_tess_pixel, axis=1)]
             if competing_data_frame.shape[0] == 0:
+                new_data_frame.loc[index] = results_data_frame.loc[index]
+                results_data_frame.drop(index, inplace=True)
                 continue
             if row['magnitude'] is None:
                 results_data_frame.drop(index, inplace=True)
@@ -158,6 +179,11 @@ class FilterProcesser:
                 results_data_frame.drop(index, inplace=True)
                 self.dropped_due_to_brighter_target_nearby += 1
                 continue
+            for competing_index, competing_row in competing_data_frame.iterrows():
+                results_data_frame.drop(competing_index, inplace=True)
+            new_data_frame.loc[index] = results_data_frame.loc[index]
+            results_data_frame.drop(index, inplace=True)
+
         self.deduplicated_count = results_data_frame.shape[0]
 
     def add_additional_columns(self, results_data_frame):
@@ -175,6 +201,7 @@ class FilterProcesser:
         def sector_from_row(row: pd.Series) -> float:
             return row['light_curve'].sector
 
+        TessLightCurve.load_tic_rows_from_mast_for_list(results_data_frame['light_curve'].values)
         results_data_frame['tic_id'] = results_data_frame.apply(tic_id_from_row, axis=1)
         results_data_frame['sector'] = results_data_frame.apply(sector_from_row, axis=1)
         self.tic_id_duplicated_count = results_data_frame.shape[0]
@@ -189,10 +216,13 @@ class FilterProcesser:
         temporary_file0a = self.temporary_directory.joinpath('temporary_file0a.pkl')
         if not temporary_file0a.exists():
             results_data_frame.to_pickle(temporary_file0a)
+        else:
+            print(f'Loading from {temporary_file0a}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file0a)
         results_data_frame['variability_processed'] = False
         print('Calculating variability...', flush=True)
         for index, row in results_data_frame.iterrows():
-            if row['variability_processed']:
+            if row['light_curve']._variability_period is not None:
                 continue
             if index % 300 == 0:
                 results_data_frame.to_pickle(temporary_file0a)
@@ -223,6 +253,7 @@ class FilterProcesser:
 
     def add_light_curves_to_data_frame(self, results_data_frame):
         print('Loading light curves...', flush=True)
+
         def light_curve_from_row(row: pd.Series) -> TessFfiLightCurve:
             light_curve_path = Path(row['light_curve_path'])
             # Hack to fix changes to Adapt.
@@ -236,7 +267,7 @@ class FilterProcesser:
         results_data_frame['light_curve'] = results_data_frame.apply(light_curve_from_row, axis=1)
 
 
-if __name__ == '__main__':
+def main():
     infer_results_path = Path('/explore/nobackup/people/golmsche/generalized-photometric-neural-network-experiments/'
                               'logs/FfiHades_mixed_sine_sawtooth_2022_10_07_17_03_23/'
                               'infer_results_2022-12-11-19-35-34.csv')
@@ -247,3 +278,7 @@ if __name__ == '__main__':
     filter_processor = FilterProcesser()
     results_data_frame = filter_processor.filter_results(results_data_frame)
     results_data_frame.to_csv(filtered_results_path, index=False)
+
+
+if __name__ == '__main__':
+    main()
