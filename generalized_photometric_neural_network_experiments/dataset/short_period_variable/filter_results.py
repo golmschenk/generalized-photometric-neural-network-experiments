@@ -93,7 +93,7 @@ class FilterProcesser:
 
         temporary_file3 = self.temporary_directory.joinpath('temporary_file3.pkl')
         if not temporary_file3.exists():
-            self.remove_duplicates_by_separation(results_data_frame)
+            results_data_frame = self.remove_duplicates_by_separation(results_data_frame)
             results_data_frame.to_pickle(temporary_file3)
         else:
             print(f'Loading from {temporary_file3}')
@@ -151,9 +151,20 @@ class FilterProcesser:
     def remove_duplicates_by_separation(self, results_data_frame):
         print('Comparing separations...', flush=True)
         new_data_frame = results_data_frame.iloc[:0, :].copy()
+        temporary_file3a_old = self.temporary_directory.joinpath('temporary_file3a_old.pkl')
+        temporary_file3a_new = self.temporary_directory.joinpath('temporary_file3a_new.pkl')
+        if temporary_file3a_new.exists():
+            print(f'Loading from {temporary_file3a_old}')
+            results_data_frame = pd.pandas.read_pickle(temporary_file3a_old)
+            print(f'Loading from {temporary_file3a_new}')
+            new_data_frame = pd.pandas.read_pickle(temporary_file3a_new)
         for index, row in results_data_frame.iterrows():
             if index not in results_data_frame.index:
                 continue
+            if index % 1000 == 0:
+                results_data_frame.to_pickle(temporary_file3a_old)
+                results_data_frame.to_pickle(temporary_file3a_new)
+
             print(f'index: {index}, size: {results_data_frame.shape[0]}', end='\r', flush=True)
             data_frame_excluding_row = results_data_frame.drop(index)
 
@@ -169,22 +180,23 @@ class FilterProcesser:
                 data_frame_excluding_row.apply(separation_less_than_tess_pixel, axis=1)]
             if competing_data_frame.shape[0] == 0:
                 new_data_frame.loc[index] = results_data_frame.loc[index]
-                results_data_frame.drop(index, inplace=True)
+                results_data_frame = results_data_frame.drop(index)
                 continue
             if row['magnitude'] is None:
-                results_data_frame.drop(index, inplace=True)
+                results_data_frame = results_data_frame.drop(index)
                 self.dropped_due_to_brighter_target_nearby += 1
                 continue
             if (competing_data_frame[competing_data_frame['magnitude'] <= row['magnitude']]).shape[0] > 0:
-                results_data_frame.drop(index, inplace=True)
+                results_data_frame = results_data_frame.drop(index)
                 self.dropped_due_to_brighter_target_nearby += 1
                 continue
             for competing_index, competing_row in competing_data_frame.iterrows():
-                results_data_frame.drop(competing_index, inplace=True)
+                results_data_frame = results_data_frame.drop(competing_index)
             new_data_frame.loc[index] = results_data_frame.loc[index]
-            results_data_frame.drop(index, inplace=True)
+            results_data_frame = results_data_frame.drop(index)
 
         self.deduplicated_count = results_data_frame.shape[0]
+        return new_data_frame
 
     def add_additional_columns(self, results_data_frame):
         print('Adding additional columns...', flush=True)
