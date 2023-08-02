@@ -163,7 +163,7 @@ class FilterProcesser:
                 continue
             if index % 1000 == 0:
                 results_data_frame.to_pickle(temporary_file3a_old)
-                results_data_frame.to_pickle(temporary_file3a_new)
+                new_data_frame.to_pickle(temporary_file3a_new)
 
             print(f'index: {index}, size: {results_data_frame.shape[0]}', end='\r', flush=True)
             data_frame_excluding_row = results_data_frame.drop(index)
