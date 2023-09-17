@@ -61,9 +61,10 @@ class FilterProcesser:
         self.dropped_by_known_count = 0
         self.dropped_by_centroid_offset_count = 0
         self.temporary_directory = Path('filter_temporary')
-        self.tic_id_duplicated_count = None
-        self.tic_id_deduplicated_count = None
-        self.duplicated_count = None
+        self.tic_id_duplicated_count = 0
+        self.tic_id_deduplicated_count = 0
+        self.deduplicated_count = 0
+        self.duplicated_count = 0
         self.dropped_due_to_brighter_target_nearby = 0
 
     def filter_results(self, results_data_frame: pd.DataFrame) -> pd.DataFrame:
@@ -170,6 +171,11 @@ class FilterProcesser:
 
             def separation_to_current(other_row: pd.Series) -> Angle:
                 return row['sky_coord'].separation(other_row['sky_coord'])
+
+            if data_frame_excluding_row.shape[0] == 0:
+                new_data_frame.loc[index] = results_data_frame.loc[index]
+                results_data_frame = results_data_frame.drop(index)
+                continue
 
             data_frame_excluding_row['separation'] = data_frame_excluding_row.apply(separation_to_current, axis=1)
 
@@ -289,6 +295,8 @@ def main():
     # results_data_frame = results_data_frame.head(30)
     filter_processor = FilterProcesser()
     results_data_frame = filter_processor.filter_results(results_data_frame)
+    results_data_frame['ra'] = results_data_frame['ra'].apply(lambda deg: deg.to(units.deg))
+    results_data_frame['dec'] = results_data_frame['dec'].apply(lambda deg: deg.to(units.deg))
     results_data_frame.to_csv(filtered_results_path, index=False)
 
 
