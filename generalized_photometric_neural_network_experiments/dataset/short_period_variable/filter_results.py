@@ -30,7 +30,7 @@ class ShortPeriodTessFfiLightCurve(TessFfiLightCurve):
         median_time_step = np.median(np.diff(self.times[~np.isnan(self.times)]))
         lightkurve_light_curve = self.to_lightkurve()
         inlier_lightkurve_light_curve = lightkurve_light_curve.remove_outliers(sigma=3)
-        periodogram = LombScarglePeriodogram.from_lightcurve(inlier_lightkurve_light_curve, oversample_factor=3,
+        periodogram = LombScarglePeriodogram.from_lightcurve(inlier_lightkurve_light_curve, oversample_factor=30,
                                                              minimum_period=minimum_period,
                                                              maximum_period=maximum_period)
         periods__days = periodogram.period.to(units.d).value
